@@ -212,6 +212,9 @@ void main() {
           containsAll(<String>['MONGO_URI', 'JWT_SECRET', 'JWT_AUDIENCE']));
       expect(envAdds.singleWhere((c) => c.args[4] == 'JWT_SECRET').stdinText,
           'secret-0123456789-0123456789-0123456789');
+      // PowerSync Cloud only accepts the instance URL as audience.
+      expect(envAdds.singleWhere((c) => c.args[4] == 'JWT_AUDIENCE').stdinText,
+          'https://inst-42.powersync.journeyapps.com');
 
       // PowerSync CLI received the secrets via PS_ env, not files.
       final serviceYaml =

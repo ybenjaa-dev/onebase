@@ -178,7 +178,6 @@ client_auth:
         kid: mongo-easy-dev
         k:
           secret: !env PS_JWT_K
-  audience: ["powersync-dev"]
 ''');
   }
 
@@ -389,7 +388,10 @@ client_auth:
       'MONGO_DB': mongoDatabase,
       'AUTH_MODE': 'dev',
       'JWT_SECRET': jwtSecret,
-      'JWT_AUDIENCE': 'powersync-dev',
+      // PowerSync Cloud only accepts its own instance URL as the JWT
+      // audience (custom audiences in client_auth are not applied there),
+      // so dev tokens must be stamped with it.
+      'JWT_AUDIENCE': powersyncUrl,
     };
 
     // Link with an explicit project name (otherwise Vercel names the
