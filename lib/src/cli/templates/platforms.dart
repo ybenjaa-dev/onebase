@@ -51,14 +51,14 @@ Map<String, String> _vercel(MongoEasySchema schema) {
   return {
     'lib/core.ts': core,
     'api/upload.ts': '''
-import { handleUpload, readEnv } from '../lib/core';
+import { handleUpload, readEnv } from '../lib/core.js';
 
 export async function POST(request: Request): Promise<Response> {
   return handleUpload(request, readEnv((key) => process.env[key]));
 }
 ''',
     'api/token.ts': '''
-import { handleToken, readEnv } from '../lib/core';
+import { handleToken, readEnv } from '../lib/core.js';
 
 export async function POST(request: Request): Promise<Response> {
   return handleToken(request, readEnv((key) => process.env[key]));
@@ -83,8 +83,8 @@ export async function POST(request: Request): Promise<Response> {
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true

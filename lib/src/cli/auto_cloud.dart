@@ -23,6 +23,22 @@ class AutoCloudResult {
   final String instanceId;
 }
 
+class _PsProject {
+  const _PsProject(
+      {required this.id, required this.name, required this.instances});
+
+  final String id;
+  final String name;
+  final List<_PsInstance> instances;
+}
+
+class _PsInstance {
+  const _PsInstance({required this.id, required this.name});
+
+  final String id;
+  final String name;
+}
+
 /// Thrown when a provisioning step fails; [step] tells the user where.
 class AutoCloudException implements Exception {
   const AutoCloudException(this.step, this.detail, {this.hint});
@@ -84,6 +100,7 @@ class AutoCloudSetup {
     await _checkPrerequisites();
     final configDir = _writePowerSyncConfig();
     final instanceId = await _ensureInstance(configDir);
+    await _alignServiceConfig(configDir);
     await _deployPowerSync(configDir);
     final powersyncUrl = 'https://$instanceId.powersync.journeyapps.com';
     final backendUrl = await _deployBackend(powersyncUrl);
@@ -124,13 +141,28 @@ class AutoCloudSetup {
         '(${who.stdout.trim()})');
   }
 
-  /// Writes the PowerSync CLI config directory (service + sync config).
+  /// Writes the PowerSync CLI config directory. The CLI convention is a
+  /// `powersync/` folder inside the working directory, holding
+  /// `service.yaml`, `sync-config.yaml` and the CLI-managed `cli.yaml`.
   String _writePowerSyncConfig() {
-    final dir = Directory(p.join(root, 'powersync-cloud'))
+    final workDir = Directory(p.join(root, 'powersync-cloud'))
       ..createSync(recursive: true);
+    Directory(p.join(workDir.path, 'powersync')).createSync(recursive: true);
 
-    File(p.join(dir.path, 'service.yaml')).writeAsStringSync('''
-name: $instanceName
+    _writeServiceYaml(workDir.path, name: instanceName, region: 'us');
+    File(p.join(workDir.path, 'powersync', 'sync-config.yaml'))
+        .writeAsStringSync(generateSyncStreamsYaml(schema));
+
+    out.writeln('✓ PowerSync config written to powersync-cloud/powersync/');
+    return workDir.path;
+  }
+
+  void _writeServiceYaml(String configDir,
+      {required String name, required String region}) {
+    File(p.join(configDir, 'powersync', 'service.yaml')).writeAsStringSync('''
+_type: cloud
+name: $name
+region: $region
 
 replication:
   connections:
@@ -144,20 +176,45 @@ client_auth:
       - kty: oct
         alg: HS256
         kid: mongo-easy-dev
-        k: !env PS_JWT_K
+        k:
+          secret: !env PS_JWT_K
   audience: ["powersync-dev"]
 ''');
+  }
 
-    File(p.join(dir.path, 'sync-config.yaml'))
-        .writeAsStringSync(generateSyncStreamsYaml(schema));
+  /// Instance name and region are immutable server-side facts — when linked
+  /// to an existing instance, mirror them so deploy validation passes.
+  Future<void> _alignServiceConfig(String configDir) async {
+    final fetch = await runner.run(
+      'npx',
+      ['-y', 'powersync@latest', 'fetch', 'config', '--output=json'],
+      workingDirectory: configDir,
+      environment: _psEnv,
+    );
+    if (!fetch.ok) return; // freshly created instance — defaults are correct
 
-    out.writeln('✓ PowerSync config written to powersync-cloud/');
-    return dir.path;
+    final start = fetch.stdout.indexOf('{');
+    if (start == -1) return;
+    try {
+      final root = jsonDecode(fetch.stdout.substring(start));
+      if (root is! Map<String, Object?>) return;
+      final config = root['config'];
+      if (config is! Map<String, Object?>) return;
+      final region = config['region']?.toString();
+      final name = config['name']?.toString();
+      if (region == null && name == null) return;
+      _writeServiceYaml(configDir,
+          name: name ?? instanceName, region: region ?? 'us');
+      out.writeln(
+          '✓ matched existing instance settings (name: $name, region: $region)');
+    } on FormatException {
+      // Unparseable — keep defaults and let deploy validation report.
+    }
   }
 
   Future<String> _ensureInstance(String configDir) async {
     // Already linked? cli.yaml holds the instance id.
-    final cliYaml = File(p.join(configDir, 'cli.yaml'));
+    final cliYaml = File(p.join(configDir, 'powersync', 'cli.yaml'));
     if (cliYaml.existsSync()) {
       final match = RegExp('instance_id:\\s*(\\S+)')
           .firstMatch(cliYaml.readAsStringSync());
@@ -168,26 +225,42 @@ client_auth:
       }
     }
 
-    final project = projectId ?? await _discoverProjectId();
-    final create = await runner.run(
-      'npx',
-      [
-        '-y',
-        'powersync@latest',
-        'link',
-        'cloud',
+    final project = await _discoverProject();
+
+    // The dashboard's onboarding wizard often pre-creates instances
+    // (Production/Development). Link to one instead of creating a third —
+    // prefer "Development" since --auto configures dev-mode auth.
+    final List<String> linkArgs;
+    final String describe;
+    final existing = project.instances;
+    if (existing.isNotEmpty) {
+      final instance = existing.firstWhere(
+        (i) => i.name.toLowerCase() == 'development',
+        orElse: () => existing.first,
+      );
+      linkArgs = ['--instance-id=${instance.id}'];
+      describe = 'linked to existing instance "${instance.name}" '
+          '(${instance.id})';
+    } else {
+      linkArgs = [
         '--create',
-        '--project-id=$project',
+        '--project-id=${project.id}',
         if (orgId != null) '--org-id=$orgId',
-      ],
+      ];
+      describe = 'instance created';
+    }
+
+    final link = await runner.run(
+      'npx',
+      ['-y', 'powersync@latest', 'link', 'cloud', ...linkArgs],
       workingDirectory: configDir,
       environment: _psEnv,
     );
-    if (!create.ok) {
+    if (!link.ok) {
       throw AutoCloudException(
-        'create PowerSync instance',
-        create.output,
-        hint: 'Check the token has access to project $project '
+        'link PowerSync instance',
+        link.output,
+        hint: 'Check the token has access to project ${project.id} '
             '(`npx powersync fetch instances`).',
       );
     }
@@ -198,37 +271,88 @@ client_auth:
         : null;
     if (match == null) {
       throw AutoCloudException(
-        'create PowerSync instance',
-        'Instance created but cli.yaml has no instance_id.\n${create.output}',
+        'link PowerSync instance',
+        'Linked but cli.yaml has no instance_id.\n${link.output}',
       );
     }
     final id = match.group(1)!;
-    out.writeln('✓ PowerSync instance created: $id');
+    out.writeln('✓ PowerSync $describe');
     return id;
   }
 
-  /// When --project-id is not passed, use it if the account has exactly one.
-  Future<String> _discoverProjectId() async {
+  /// Resolves the target project from `fetch instances` output
+  /// (`--project-id` narrows it when the account has several).
+  Future<_PsProject> _discoverProject() async {
     final fetch = await runner.run(
       'npx',
       ['-y', 'powersync@latest', 'fetch', 'instances', '--output=json'],
     );
-    if (fetch.ok) {
-      final ids = RegExp('"project_id"\\s*:\\s*"([^"]+)"')
-          .allMatches(fetch.stdout)
-          .map((m) => m.group(1)!)
-          .toSet();
-      if (ids.length == 1) return ids.first;
+    final projects = fetch.ok ? _parseProjects(fetch.stdout) : <_PsProject>[];
+
+    if (projectId != null) {
+      final chosen = projects.where((p) => p.id == projectId).firstOrNull;
+      if (chosen != null) return chosen;
+      throw AutoCloudException(
+        'select PowerSync project',
+        'Project $projectId was not found in this account.',
+        hint: 'Check `npx powersync fetch instances`.',
+      );
     }
+    if (projects.length == 1) return projects.single;
+
     throw AutoCloudException(
       'select PowerSync project',
-      fetch.ok
-          ? 'Could not determine a unique project automatically.'
-          : fetch.output,
-      hint: 'Pass it explicitly: --project-id=<id> '
-          '(visible in the PowerSync Dashboard URL, or via '
-          '`npx powersync fetch instances`).',
+      !fetch.ok
+          ? fetch.output
+          : (projects.isEmpty
+              ? 'Your PowerSync account has no projects yet.'
+              : 'Multiple projects found: '
+                  '${projects.map((p) => '${p.name} (${p.id})').join(', ')}.'),
+      hint: projects.isEmpty && fetch.ok
+          ? 'Create one first at https://dashboard.powersync.com (fresh '
+              'accounts start empty), then re-run — it will be picked up '
+              'automatically.'
+          : 'Pass it explicitly: --project-id=<id>.',
     );
+  }
+
+  static List<_PsProject> _parseProjects(String stdout) {
+    // The CLI may print progress lines before the JSON.
+    final start = stdout.indexOf('{');
+    if (start == -1) return const [];
+    final Object? root;
+    try {
+      root = jsonDecode(stdout.substring(start));
+    } on FormatException {
+      return const [];
+    }
+    if (root is! Map<String, Object?>) return const [];
+
+    final projects = <_PsProject>[];
+    final orgs = root['cloudInstances'];
+    if (orgs is! Map<String, Object?>) return const [];
+    for (final org in orgs.values) {
+      if (org is! Map<String, Object?>) continue;
+      final orgProjects = org['projects'];
+      if (orgProjects is! Map<String, Object?>) continue;
+      for (final MapEntry(key: id, value: project) in orgProjects.entries) {
+        if (project is! Map<String, Object?>) continue;
+        projects.add(_PsProject(
+          id: id,
+          name: project['name']?.toString() ?? id,
+          instances: [
+            if (project['instances'] case final List<Object?> instances)
+              for (final instance in instances)
+                if (instance is Map<String, Object?>)
+                  _PsInstance(
+                    id: instance['id']?.toString() ?? '',
+                    name: instance['name']?.toString() ?? '',
+                  ),
+          ],
+        ));
+      }
+    }
+    return projects;
   }
 
   Future<void> _deployPowerSync(String configDir) async {
@@ -268,7 +392,21 @@ client_auth:
       'JWT_AUDIENCE': 'powersync-dev',
     };
 
-    // First deploy links/creates the Vercel project.
+    // Link with an explicit project name (otherwise Vercel names the
+    // project after the directory, i.e. "vercel").
+    await runner.run(
+      'npx',
+      [
+        '-y',
+        'vercel@latest',
+        'link',
+        '--yes',
+        '--project',
+        '$instanceName-backend',
+      ],
+      workingDirectory: backendDir,
+    );
+
     var deploy = await _vercelDeploy(backendDir);
 
     for (final MapEntry(:key, :value) in envValues.entries) {

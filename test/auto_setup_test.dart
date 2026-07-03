@@ -155,6 +155,13 @@ void main() {
           environment: const {'PS_ADMIN_TOKEN': 'test-token'},
         );
 
+    const fetchJson = '''
+- Fetching cloud instances...
+{"cloudInstances":{"org-1":{"id":"org-1","name":"acme","projects":{
+  "proj-1":{"id":"proj-1","name":"halal-app","instances":[]}}}},
+ "linkedInstances":[]}
+''';
+
     test('happy path provisions instance, deploys config and backend',
         () async {
       runner.onRun = (exe, args, {cwd, stdinText}) {
@@ -162,8 +169,12 @@ void main() {
         if (command.contains('whoami')) {
           return const ProcessResult2(0, 'soft2scale', '');
         }
+        if (command.contains('fetch instances')) {
+          return const ProcessResult2(0, fetchJson, '');
+        }
         if (command.contains('link cloud')) {
-          File('$cwd/cli.yaml')
+          Directory('$cwd/powersync').createSync(recursive: true);
+          File('$cwd/powersync/cli.yaml')
               .writeAsStringSync('type: cloud\ninstance_id: inst-42\n');
           return const ProcessResult2(0, 'linked', '');
         }
@@ -204,14 +215,17 @@ void main() {
 
       // PowerSync CLI received the secrets via PS_ env, not files.
       final serviceYaml =
-          File('${temp.path}/powersync-cloud/service.yaml').readAsStringSync();
+          File('${temp.path}/powersync-cloud/powersync/service.yaml')
+              .readAsStringSync();
       expect(serviceYaml, contains('!env PS_MONGO_URI'));
+      expect(serviceYaml, contains('_type: cloud'));
       expect(serviceYaml, isNot(contains('u:p@')));
     });
 
     test('reuses an already-linked instance', () async {
-      Directory('${temp.path}/powersync-cloud').createSync(recursive: true);
-      File('${temp.path}/powersync-cloud/cli.yaml')
+      Directory('${temp.path}/powersync-cloud/powersync')
+          .createSync(recursive: true);
+      File('${temp.path}/powersync-cloud/powersync/cli.yaml')
           .writeAsStringSync('type: cloud\ninstance_id: existing-7\n');
       runner.onRun = (exe, args, {cwd, stdinText}) {
         if (args.join(' ').contains('vercel@latest deploy')) {
@@ -226,11 +240,49 @@ void main() {
           isFalse);
     });
 
+    test('links to an existing Development instance instead of creating',
+        () async {
+      const fetchWithInstances = '''
+{"cloudInstances":{"org-1":{"id":"org-1","name":"acme","projects":{
+  "proj-1":{"id":"proj-1","name":"halal-app","instances":[
+    {"id":"inst-prod","name":"Production"},
+    {"id":"inst-dev","name":"Development"}]}}}},
+ "linkedInstances":[]}
+''';
+      runner.onRun = (exe, args, {cwd, stdinText}) {
+        final command = args.join(' ');
+        if (command.contains('fetch instances')) {
+          return const ProcessResult2(0, fetchWithInstances, '');
+        }
+        if (command.contains('link cloud')) {
+          Directory('$cwd/powersync').createSync(recursive: true);
+          File('$cwd/powersync/cli.yaml')
+              .writeAsStringSync('type: cloud\ninstance_id: inst-dev\n');
+          return const ProcessResult2(0, 'linked', '');
+        }
+        if (command.contains('vercel@latest deploy')) {
+          return const ProcessResult2(0, 'https://b.vercel.app', '');
+        }
+        return const ProcessResult2(0, 'ok', '');
+      };
+
+      final result = await setup(projectId: 'proj-1').run();
+      expect(result.instanceId, 'inst-dev');
+      final link = runner.calls
+          .singleWhere((c) => c.args.join(' ').contains('link cloud'));
+      expect(link.args, contains('--instance-id=inst-dev'));
+      expect(link.args.join(' '), isNot(contains('--create')));
+    });
+
     test('surfaces PowerSync deploy failures with the CLI output', () async {
       runner.onRun = (exe, args, {cwd, stdinText}) {
         final command = args.join(' ');
+        if (command.contains('fetch instances')) {
+          return const ProcessResult2(0, fetchJson, '');
+        }
         if (command.contains('link cloud')) {
-          File('$cwd/cli.yaml').writeAsStringSync('instance_id: i\n');
+          Directory('$cwd/powersync').createSync(recursive: true);
+          File('$cwd/powersync/cli.yaml').writeAsStringSync('instance_id: i\n');
           return const ProcessResult2(0, '', '');
         }
         if (command.contains('powersync@latest deploy')) {
@@ -240,7 +292,7 @@ void main() {
       };
 
       expect(
-        () => setup(projectId: 'p').run(),
+        () => setup(projectId: 'proj-1').run(),
         throwsA(isA<AutoCloudException>()
             .having((e) => e.step, 'step', 'deploy PowerSync config')
             .having((e) => e.detail, 'detail', contains('line 3'))),
