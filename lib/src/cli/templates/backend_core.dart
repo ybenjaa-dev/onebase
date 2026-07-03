@@ -77,7 +77,7 @@ export function readEnv(get: (key: string) => string | undefined): Env {
   };
 }
 
-async function verifyToken(token: string, env: Env): Promise<string> {
+export async function verifyToken(token: string, env: Env): Promise<string> {
   const options = env.JWT_AUDIENCE ? { audience: env.JWT_AUDIENCE } : {};
   let payload;
   if (env.AUTH_MODE === 'jwks') {
@@ -240,7 +240,7 @@ async function getMongo(env: Env): Promise<MongoClient> {
   return mongoClient;
 }
 
-function json(status: number, body: unknown): Response {
+export function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
