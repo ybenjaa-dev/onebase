@@ -1,0 +1,19 @@
+.dart_tool/
+build/
+pubspec.lock
+.flutter-plugins*
+*.iml
+.idea/
+
+# example platform folders (regenerate with `flutter create .`)
+example/ios/
+example/android/
+example/macos/
+example/linux/
+example/windows/
+example/web/
+example/pubspec.lock
+
+# generated backend deps
+**/node_modules/
+.vercel/

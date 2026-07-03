@@ -1,0 +1,29 @@
+# Self-hosted PowerSync service config for the local E2E harness.
+# Dev secret (HS256): mongo-easy-local-e2e-secret-0123456789abcdef
+
+telemetry:
+  disable_telemetry_sharing: true
+
+replication:
+  connections:
+    - type: mongodb
+      uri: mongodb://mongo:27017/mongo_easy_demo
+      post_images: auto_configure
+
+storage:
+  type: mongodb
+  uri: mongodb://mongo:27017/powersync_storage
+
+port: 8080
+
+sync_config:
+  path: /config/sync-config.yaml
+
+client_auth:
+  jwks:
+    keys:
+      - kty: oct
+        alg: HS256
+        kid: mongo-easy-dev
+        k: bW9uZ28tZWFzeS1sb2NhbC1lMmUtc2VjcmV0LTAxMjM0NTY3ODlhYmNkZWY
+  audience: ["powersync-dev"]

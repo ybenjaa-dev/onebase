@@ -1,0 +1,28 @@
+name: mongo_easy_example
+description: Todo app showcasing mongo_easy — login, per-user data, offline mode, realtime sync.
+publish_to: none
+version: 1.0.0
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  mongo_easy:
+    path: ../
+  hooks_riverpod: ^3.0.0
+  flutter_hooks: ^0.21.0
+  http: ^1.2.0
+  shared_preferences: ^2.3.0
+
+dev_dependencies:
+  flutter_lints: ^5.0.0
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

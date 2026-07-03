@@ -1,0 +1,13 @@
+{
+  "name": "mongo-easy-local-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx server.ts"
+  },
+  "dependencies": {
+    "jose": "^5.9.0",
+    "mongodb": "^6.10.0",
+    "tsx": "^4.19.0"
+  }
+}

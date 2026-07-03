@@ -1,0 +1,32 @@
+name: mongo_easy
+description: >-
+  Firebase-like developer experience for MongoDB Atlas in Flutter. Offline-first
+  reactive collections synced through PowerSync — no backend code required.
+version: 0.2.0
+repository: https://github.com/soft2scale/mongo_easy
+topics:
+  - mongodb
+  - offline-first
+  - sync
+  - powersync
+  - database
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  powersync: ^2.3.1
+  sqlite3_flutter_libs: ^0.6.0+eol
+  http: ^1.2.0
+  path_provider: ^2.1.4
+  path: ^1.9.0
+  yaml: ^3.1.2
+  args: ^2.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0

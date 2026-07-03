@@ -1,0 +1,11 @@
+# Schema for the example Todo app. Regenerate artifacts with:
+#   dart run mongo_easy:setup
+
+collections:
+  todos:
+    owner_field: owner_id
+    fields:
+      title: text
+      done: bool
+      created_at: datetime
+      owner_id: text
