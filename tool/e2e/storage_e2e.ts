@@ -117,7 +117,7 @@ async function upload(
 
 const mongo = new MongoClient(uri);
 await mongo.connect();
-const files = mongo.db('e2e_storage').collection('_mongobase_files');
+const files = mongo.db('e2e_storage').collection('_onebase_files');
 
 await t('a presigned upload reaches the object store', async () => {
   const res = await upload(alice, 'avatars', 'me.png', Buffer.from([1, 2, 3]));

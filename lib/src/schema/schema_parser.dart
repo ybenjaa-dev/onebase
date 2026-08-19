@@ -4,7 +4,7 @@ import '../errors.dart';
 import 'schema.dart';
 import 'storage_schema.dart';
 
-/// Parses `mongobase.yaml` into a [MongobaseSchema].
+/// Parses `onebase.yaml` into a [OnebaseSchema].
 ///
 /// ```yaml
 /// collections:
@@ -19,27 +19,27 @@ import 'storage_schema.dart';
 ///     fields:
 ///       name: text
 /// ```
-MongobaseSchema parseSchemaYaml(String yamlSource) {
+OnebaseSchema parseSchemaYaml(String yamlSource) {
   final Object? root;
   try {
     root = loadYaml(yamlSource);
   } on YamlException catch (error) {
     throw SchemaParseException(
-      'mongobase.yaml is not valid YAML: ${error.message}',
+      'onebase.yaml is not valid YAML: ${error.message}',
       hint: 'Fix the syntax error near line ${error.span?.start.line}.',
     );
   }
 
   if (root is! YamlMap) {
     throw const SchemaParseException(
-      'mongobase.yaml must be a YAML map with a top-level `collections` key.',
+      'onebase.yaml must be a YAML map with a top-level `collections` key.',
     );
   }
 
   final collectionsNode = root['collections'];
   if (collectionsNode is! YamlMap || collectionsNode.isEmpty) {
     throw const SchemaParseException(
-      'mongobase.yaml has no `collections`.',
+      'onebase.yaml has no `collections`.',
       hint: 'Declare at least one collection:\n'
           'collections:\n'
           '  todos:\n'
@@ -122,7 +122,7 @@ MongobaseSchema parseSchemaYaml(String yamlSource) {
     ));
   }
 
-  return MongobaseSchema(collections, storage: _parseStorage(root['storage']));
+  return OnebaseSchema(collections, storage: _parseStorage(root['storage']));
 }
 
 /// Parses the optional `storage:` section.

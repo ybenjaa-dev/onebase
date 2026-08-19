@@ -24,7 +24,7 @@ enum StorageAccess {
   }
 }
 
-/// One bucket ("folder") of files, declared in `mongobase.yaml`.
+/// One bucket ("folder") of files, declared in `onebase.yaml`.
 class StorageBucketSchema {
   StorageBucketSchema(
     this.name, {
@@ -97,7 +97,7 @@ class StorageSchema {
       throw SchemaParseException(
         'Unknown storage bucket "$name".',
         hint: buckets.isEmpty
-            ? 'Declare one under `storage:` in mongobase.yaml.'
+            ? 'Declare one under `storage:` in onebase.yaml.'
             : 'Declared buckets: ${buckets.keys.join(', ')}.',
       );
     }

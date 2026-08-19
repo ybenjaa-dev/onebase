@@ -1,9 +1,9 @@
-/// Base class for all errors thrown by mongobase.
+/// Base class for all errors thrown by onebase.
 ///
 /// Every exception carries a [message] describing what went wrong and,
 /// where possible, a [hint] describing how to fix it.
-sealed class MongobaseException implements Exception {
-  const MongobaseException(this.message, {this.hint});
+sealed class OnebaseException implements Exception {
+  const OnebaseException(this.message, {this.hint});
 
   /// What went wrong.
   final String message;
@@ -13,49 +13,49 @@ sealed class MongobaseException implements Exception {
 
   @override
   String toString() =>
-      'MongobaseException: $message${hint == null ? '' : '\n  hint: $hint'}';
+      'OnebaseException: $message${hint == null ? '' : '\n  hint: $hint'}';
 }
 
-/// Thrown when [Mongobase.instance] is accessed before [Mongobase.init].
-final class NotInitializedException extends MongobaseException {
+/// Thrown when [Onebase.instance] is accessed before [Onebase.init].
+final class NotInitializedException extends OnebaseException {
   const NotInitializedException()
       : super(
-          'Mongobase has not been initialized.',
-          hint: 'Call `await Mongobase.init(MongobaseConfig(...))` before '
+          'Onebase has not been initialized.',
+          hint: 'Call `await Onebase.init(OnebaseConfig(...))` before '
               'accessing collections — typically in main() before runApp().',
         );
 }
 
-/// Thrown when [MongobaseConfig] contains invalid or missing values.
-final class ConfigurationException extends MongobaseException {
+/// Thrown when [OnebaseConfig] contains invalid or missing values.
+final class ConfigurationException extends OnebaseException {
   const ConfigurationException(super.message, {super.hint});
 }
 
 /// Thrown when accessing a collection that is not declared in the schema.
-final class UnknownCollectionException extends MongobaseException {
+final class UnknownCollectionException extends OnebaseException {
   UnknownCollectionException(String collection, Iterable<String> known)
       : super(
           'Unknown collection "$collection".',
           hint:
               'Declared collections: ${known.isEmpty ? '(none)' : known.join(', ')}. '
-              'Add "$collection" to mongobase.yaml and re-run '
-              '`dart run mongobase:setup`.',
+              'Add "$collection" to onebase.yaml and re-run '
+              '`dart run onebase:setup`.',
         );
 }
 
 /// Thrown when a query or write references a field that is not in the schema.
-final class UnknownFieldException extends MongobaseException {
+final class UnknownFieldException extends OnebaseException {
   UnknownFieldException(String field, String collection, Iterable<String> known)
       : super(
           'Unknown field "$field" on collection "$collection".',
           hint: 'Declared fields: ${known.join(', ')}. '
-              'Add it to mongobase.yaml and re-run '
-              '`dart run mongobase:setup`, or fix the field name.',
+              'Add it to onebase.yaml and re-run '
+              '`dart run onebase:setup`, or fix the field name.',
         );
 }
 
 /// Thrown when a field name or dot-path is not a valid identifier.
-final class InvalidFieldNameException extends MongobaseException {
+final class InvalidFieldNameException extends OnebaseException {
   InvalidFieldNameException(String field)
       : super(
           'Invalid field name "$field".',
@@ -65,7 +65,7 @@ final class InvalidFieldNameException extends MongobaseException {
 }
 
 /// Thrown when the auth token is missing, malformed, or expired.
-final class InvalidTokenException extends MongobaseException {
+final class InvalidTokenException extends OnebaseException {
   const InvalidTokenException(super.message, {super.hint});
 }
 
@@ -73,8 +73,8 @@ final class InvalidTokenException extends MongobaseException {
 ///
 /// The sync engine retries automatically, so a single occurrence is
 /// usually transient. Persistent failures indicate a misconfigured
-/// [MongobaseConfig.uploadUrl] or a broken backend deployment.
-final class UploadException extends MongobaseException {
+/// [OnebaseConfig.uploadUrl] or a broken backend deployment.
+final class UploadException extends OnebaseException {
   const UploadException(super.message, {super.hint, this.statusCode});
 
   /// HTTP status returned by the upload endpoint, if a response was received.
@@ -82,17 +82,17 @@ final class UploadException extends MongobaseException {
 }
 
 /// Thrown when a query is structurally invalid (e.g. empty `whereIn` list).
-final class QueryException extends MongobaseException {
+final class QueryException extends OnebaseException {
   const QueryException(super.message, {super.hint});
 }
 
-/// Thrown when parsing `mongobase.yaml` fails.
-final class SchemaParseException extends MongobaseException {
+/// Thrown when parsing `onebase.yaml` fails.
+final class SchemaParseException extends OnebaseException {
   const SchemaParseException(super.message, {super.hint});
 }
 
 /// Thrown when a file operation is rejected: a bad path, a bucket that is not
 /// declared, a file too large, or storage that is not configured.
-class StorageException extends MongobaseException {
+class StorageException extends OnebaseException {
   const StorageException(super.message, {super.hint});
 }

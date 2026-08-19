@@ -1,12 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mongobase/src/schema/schema.dart';
-import 'package:mongobase/src/store/local_store.dart';
+import 'package:onebase/src/schema/schema.dart';
+import 'package:onebase/src/store/local_store.dart';
 import 'package:sqlite_async/sqlite_async.dart';
 
 void main() {
-  final schema = MongobaseSchema([
+  final schema = OnebaseSchema([
     MongoCollectionSchema(
       'todos',
       fields: {
@@ -23,7 +23,7 @@ void main() {
   late LocalStore store;
 
   setUp(() async {
-    dir = Directory.systemTemp.createTempSync('mongobase_store');
+    dir = Directory.systemTemp.createTempSync('onebase_store');
     db = SqliteDatabase(path: '${dir.path}/test.db');
     await db.initialize();
     store = LocalStore(db, schema);
@@ -51,7 +51,7 @@ void main() {
     test('is idempotent and adds columns for new schema fields', () async {
       await store.migrate();
 
-      final widened = MongobaseSchema([
+      final widened = OnebaseSchema([
         MongoCollectionSchema(
           'todos',
           fields: {

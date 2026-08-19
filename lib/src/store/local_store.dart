@@ -5,10 +5,10 @@ import 'package:sqlite_async/sqlite_async.dart';
 import '../schema/schema.dart';
 
 /// Table holding local writes that have not reached the backend yet.
-const outboxTable = '_mongobase_outbox';
+const outboxTable = '_onebase_outbox';
 
 /// Table holding sync bookkeeping (per-collection cursors).
-const metaTable = '_mongobase_meta';
+const metaTable = '_onebase_meta';
 
 /// Column stamped by the backend with the server-side modification time.
 /// Present on every synced row; used as the pull watermark.
@@ -67,11 +67,11 @@ class LocalStore {
   LocalStore(this.db, this.schema);
 
   final SqliteConnection db;
-  final MongobaseSchema schema;
+  final OnebaseSchema schema;
 
   /// Creates the tables for [schema] if they do not exist yet.
   ///
-  /// Adding a field to `mongobase.yaml` adds a column on the next launch;
+  /// Adding a field to `onebase.yaml` adds a column on the next launch;
   /// existing rows keep their data. Removing a field leaves the column in
   /// place (harmless) so a downgrade cannot lose data.
   Future<void> migrate() async {

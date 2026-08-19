@@ -4,14 +4,14 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:mongobase/src/auth/token_provider.dart';
-import 'package:mongobase/src/client/collection.dart';
-import 'package:mongobase/src/client/remote_writer.dart';
-import 'package:mongobase/src/errors.dart';
-import 'package:mongobase/src/query/query_spec.dart';
-import 'package:mongobase/src/query/remote_query_runner.dart';
-import 'package:mongobase/src/schema/schema.dart';
-import 'package:mongobase/src/sync/sync_api.dart';
+import 'package:onebase/src/auth/token_provider.dart';
+import 'package:onebase/src/client/collection.dart';
+import 'package:onebase/src/client/remote_writer.dart';
+import 'package:onebase/src/errors.dart';
+import 'package:onebase/src/query/query_spec.dart';
+import 'package:onebase/src/query/remote_query_runner.dart';
+import 'package:onebase/src/schema/schema.dart';
+import 'package:onebase/src/sync/sync_api.dart';
 
 void main() {
   final schema = MongoCollectionSchema(

@@ -32,7 +32,7 @@ class StorageFile {
 /// File storage, Firebase-style.
 ///
 /// ```dart
-/// final ref = Mongobase.storage.ref('avatars/me.png');
+/// final ref = Onebase.storage.ref('avatars/me.png');
 /// await ref.putData(bytes, contentType: 'image/png');
 /// final url = await ref.getDownloadUrl();
 /// ```
@@ -43,23 +43,23 @@ class StorageFile {
 ///
 /// Uploads need a connection. Unlike document writes they are not queued for
 /// later, because holding file bytes in the local database would bloat it.
-class MongobaseStorage {
-  const MongobaseStorage(this._api, this._schema);
+class OnebaseStorage {
+  const OnebaseStorage(this._api, this._schema);
 
   final SyncApi _api;
-  final MongobaseSchema _schema;
+  final OnebaseSchema _schema;
 
   /// A handle on `bucket/path`, e.g. `ref('avatars/me.png')`.
   ///
   /// The first segment is the bucket, which must be declared under `storage:`
-  /// in `mongobase.yaml`.
+  /// in `onebase.yaml`.
   StorageRef ref(String reference) {
     final slash = reference.indexOf('/');
     if (slash <= 0 || slash == reference.length - 1) {
       throw StorageException(
         'Storage reference "$reference" must be "<bucket>/<path>".',
         hint: _schema.storage.isEmpty
-            ? 'Declare a bucket under `storage:` in mongobase.yaml first.'
+            ? 'Declare a bucket under `storage:` in onebase.yaml first.'
             : 'Declared buckets: ${_schema.storage.buckets.keys.join(', ')}.',
       );
     }
@@ -108,7 +108,7 @@ class StorageRef {
 
   String get bucket => schema.name;
 
-  /// `bucket/path`, the form [MongobaseStorage.ref] accepts.
+  /// `bucket/path`, the form [OnebaseStorage.ref] accepts.
   String get reference => '$bucket/$path';
 
   /// Uploads [bytes] and returns the stored file.

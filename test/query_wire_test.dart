@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mongobase/src/query/local_query_runner.dart';
-import 'package:mongobase/src/query/query_builder.dart';
-import 'package:mongobase/src/query/query_wire.dart';
-import 'package:mongobase/src/schema/schema.dart';
+import 'package:onebase/src/query/local_query_runner.dart';
+import 'package:onebase/src/query/query_builder.dart';
+import 'package:onebase/src/query/query_wire.dart';
+import 'package:onebase/src/schema/schema.dart';
 
 import 'fake_executor.dart';
 

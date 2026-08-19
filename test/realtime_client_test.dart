@@ -4,9 +4,9 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:mongobase/src/auth/token_provider.dart';
-import 'package:mongobase/src/sync/realtime_client.dart';
-import 'package:mongobase/src/sync/sync_api.dart';
+import 'package:onebase/src/auth/token_provider.dart';
+import 'package:onebase/src/sync/realtime_client.dart';
+import 'package:onebase/src/sync/sync_api.dart';
 
 void main() {
   late List<Uri> opened;

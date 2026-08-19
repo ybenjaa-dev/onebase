@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:mongobase/mongobase.dart';
+import 'package:onebase/onebase.dart';
 
 import 'config.dart';
-import 'mongobase_schema.g.dart';
+import 'onebase_schema.g.dart';
 import 'providers.dart';
 import 'screens/login_screen.dart';
 import 'screens/todos_screen.dart';
@@ -15,14 +15,14 @@ Future<void> main() async {
   final auth = AuthService();
   await auth.load();
 
-  await Mongobase.init(MongobaseConfig(
+  await Onebase.init(OnebaseConfig(
     apiUrl: AppConfig.apiUrl,
     tokenProvider: TokenProvider(() async => auth.token),
-    schema: mongobaseSchema,
+    schema: onebaseSchema,
     // Offline-first with a live connection: writes work with no network, and
     // another device's changes land here the moment they happen. Flip to
-    // MongobaseMode.online for a thin client with no local database.
-    mode: AppConfig.online ? MongobaseMode.online : MongobaseMode.offline,
+    // OnebaseMode.online for a thin client with no local database.
+    mode: AppConfig.online ? OnebaseMode.online : OnebaseMode.offline,
     realtime: true,
   ));
 
@@ -40,7 +40,7 @@ class TodoApp extends ConsumerWidget {
     final signedInEmail = ref.watch(authProvider).value;
 
     return MaterialApp(
-      title: 'mongobase Todos',
+      title: 'onebase Todos',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,

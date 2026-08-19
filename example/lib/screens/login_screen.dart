@@ -47,7 +47,7 @@ class LoginScreen extends HookConsumerWidget {
                       size: 64, color: Theme.of(context).colorScheme.primary),
                   const SizedBox(height: 16),
                   Text(
-                    'mongobase Todos',
+                    'onebase Todos',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium,
                   ),
@@ -66,7 +66,7 @@ class LoginScreen extends HookConsumerWidget {
                         padding: EdgeInsets.all(12),
                         child: Text(
                           'lib/config.dart still has placeholder URLs. Run '
-                          '`dart run mongobase:setup`, deploy the backend, '
+                          '`dart run onebase:setup`, deploy the backend, '
                           'then fill in AppConfig.',
                         ),
                       ),

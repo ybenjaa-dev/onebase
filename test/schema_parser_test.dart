@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mongobase/src/errors.dart';
-import 'package:mongobase/src/schema/schema.dart';
-import 'package:mongobase/src/schema/schema_parser.dart';
+import 'package:onebase/src/errors.dart';
+import 'package:onebase/src/schema/schema.dart';
+import 'package:onebase/src/schema/schema_parser.dart';
 
 void main() {
   test('parses a full schema', () {

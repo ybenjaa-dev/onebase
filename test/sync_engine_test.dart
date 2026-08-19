@@ -4,16 +4,16 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:mongobase/src/auth/token_provider.dart';
-import 'package:mongobase/src/schema/schema.dart';
-import 'package:mongobase/src/store/local_store.dart';
-import 'package:mongobase/src/sync/sync_api.dart';
-import 'package:mongobase/src/sync/sync_engine.dart';
-import 'package:mongobase/src/sync/sync_status.dart';
+import 'package:onebase/src/auth/token_provider.dart';
+import 'package:onebase/src/schema/schema.dart';
+import 'package:onebase/src/store/local_store.dart';
+import 'package:onebase/src/sync/sync_api.dart';
+import 'package:onebase/src/sync/sync_engine.dart';
+import 'package:onebase/src/sync/sync_status.dart';
 import 'package:sqlite_async/sqlite_async.dart';
 
 void main() {
-  final schema = MongobaseSchema([
+  final schema = OnebaseSchema([
     MongoCollectionSchema(
       'todos',
       fields: {
@@ -31,7 +31,7 @@ void main() {
   late List<Map<String, Object?>> bodies;
 
   setUp(() async {
-    dir = Directory.systemTemp.createTempSync('mongobase_sync');
+    dir = Directory.systemTemp.createTempSync('onebase_sync');
     db = SqliteDatabase(path: '${dir.path}/test.db');
     await db.initialize();
     store = LocalStore(db, schema);

@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mongobase/src/cli/generate_dart_schema.dart';
-import 'package:mongobase/src/cli/templates/backend_core.dart';
-import 'package:mongobase/src/cli/templates/platforms.dart';
-import 'package:mongobase/src/cli/wizard.dart';
-import 'package:mongobase/src/schema/schema_parser.dart';
+import 'package:onebase/src/cli/generate_dart_schema.dart';
+import 'package:onebase/src/cli/templates/backend_core.dart';
+import 'package:onebase/src/cli/templates/platforms.dart';
+import 'package:onebase/src/cli/wizard.dart';
+import 'package:onebase/src/schema/schema_parser.dart';
 
 void main() {
   final schema = parseSchemaYaml('''
@@ -25,13 +25,13 @@ collections:
   group('Dart schema codegen', () {
     test('mirrors the YAML schema', () {
       final dart = generateDartSchema(schema);
-      expect(dart, contains("import 'package:mongobase/mongobase.dart';"));
+      expect(dart, contains("import 'package:onebase/onebase.dart';"));
       expect(dart, contains("MongoCollectionSchema(\n    'todos',"));
       expect(dart, contains("'done': MongoFieldType.bool,"));
       expect(dart, contains("'due_at': MongoFieldType.datetime,"));
       expect(dart, contains("ownerField: 'owner_id',"));
       expect(dart, contains('shared: true,'));
-      expect(dart, contains('final mongobaseSchema = MongobaseSchema(['));
+      expect(dart, contains('final onebaseSchema = OnebaseSchema(['));
     });
 
     test('round-trips: generated code declares every field', () {
@@ -110,7 +110,7 @@ collections:
     test('sync indexes are created automatically', () {
       final core = generateBackendFiles(schema)['src/core.ts']!;
       expect(core, contains('createIndex'));
-      expect(core, contains("name: 'mongobase_sync'"));
+      expect(core, contains("name: 'onebase_sync'"));
     });
 
     test('ownership is enforced server-side in the core', () {
@@ -186,7 +186,7 @@ collections:
       expect(
           setup.files.keys,
           containsAll(<String>[
-            'lib/mongobase_schema.g.dart',
+            'lib/onebase_schema.g.dart',
             'backend/src/core.ts',
             'backend/src/server.ts',
             'backend/Dockerfile',

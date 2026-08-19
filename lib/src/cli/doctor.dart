@@ -38,7 +38,7 @@ class Diagnosis {
 /// covered by tests rather than only by trying it.
 Future<List<Diagnosis>> diagnose({
   required String root,
-  String schemaFile = 'mongobase.yaml',
+  String schemaFile = 'onebase.yaml',
   String? apiUrl,
   Future<String?> Function(String url)? fetch,
 }) async {
@@ -51,15 +51,15 @@ Future<List<Diagnosis>> diagnose({
       Diagnosis(
         DiagnosisLevel.error,
         'No schema at $schemaFile',
-        fix: 'dart run mongobase:setup --init',
+        fix: 'dart run onebase:setup --init',
       ),
     ];
   }
 
-  final MongobaseSchema schema;
+  final OnebaseSchema schema;
   try {
     schema = parseSchemaYaml(schemaSource.readAsStringSync());
-  } on MongobaseException catch (error) {
+  } on OnebaseException catch (error) {
     return [
       Diagnosis(DiagnosisLevel.error, 'Schema does not parse',
           detail: error.message, fix: error.hint),
@@ -72,21 +72,21 @@ Future<List<Diagnosis>> diagnose({
   ));
 
   // --- generated Dart ------------------------------------------------------
-  final generated = File(p.join(root, 'lib', 'mongobase_schema.g.dart'));
+  final generated = File(p.join(root, 'lib', 'onebase_schema.g.dart'));
   if (!generated.existsSync()) {
     findings.add(const Diagnosis(
       DiagnosisLevel.error,
-      'lib/mongobase_schema.g.dart is missing',
-      fix: 'dart run mongobase:setup',
+      'lib/onebase_schema.g.dart is missing',
+      fix: 'dart run onebase:setup',
     ));
   } else if (generated.readAsStringSync().trim() !=
       generateDartSchema(schema).trim()) {
     findings.add(const Diagnosis(
       DiagnosisLevel.error,
-      'lib/mongobase_schema.g.dart is out of date',
-      detail: 'It no longer matches mongobase.yaml, so your models and the '
+      'lib/onebase_schema.g.dart is out of date',
+      detail: 'It no longer matches onebase.yaml, so your models and the '
           'runtime schema disagree.',
-      fix: 'dart run mongobase:setup --force',
+      fix: 'dart run onebase:setup --force',
     ));
   } else {
     findings.add(const Diagnosis(
@@ -99,7 +99,7 @@ Future<List<Diagnosis>> diagnose({
     findings.add(const Diagnosis(
       DiagnosisLevel.error,
       'backend/src/core.ts is missing',
-      fix: 'dart run mongobase:setup',
+      fix: 'dart run onebase:setup',
     ));
   } else {
     final source = core.readAsStringSync();
@@ -112,7 +112,7 @@ Future<List<Diagnosis>> diagnose({
         'The backend was generated from a different schema',
         detail: 'Writes to new collections or fields will be refused until '
             'the deployed backend is regenerated and redeployed.',
-        fix: 'dart run mongobase:setup --force, then redeploy backend/',
+        fix: 'dart run onebase:setup --force, then redeploy backend/',
       ));
     } else {
       findings.add(const Diagnosis(
@@ -265,7 +265,7 @@ Future<Diagnosis> _checkApi(
       DiagnosisLevel.warning,
       'Something answered at $url but not with the expected health payload',
       detail: body.length > 120 ? '${body.substring(0, 120)}…' : body,
-      fix: 'Check that apiUrl points at the mongobase backend itself.',
+      fix: 'Check that apiUrl points at the onebase backend itself.',
     );
   } on Object catch (error) {
     return Diagnosis(DiagnosisLevel.error, 'Could not reach $url',
@@ -288,7 +288,7 @@ Future<String?> _httpGet(String url) async {
 
 /// Renders findings for the terminal. Returns the process exit code.
 int reportDiagnosis(List<Diagnosis> findings, StringSink out) {
-  out.writeln('mongobase doctor\n');
+  out.writeln('onebase doctor\n');
   for (final finding in findings) {
     out.writeln('${finding.icon} ${finding.title}');
     if (finding.detail != null) out.writeln('    ${finding.detail}');

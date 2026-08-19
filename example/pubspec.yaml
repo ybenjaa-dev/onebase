@@ -1,5 +1,5 @@
-name: mongobase_example
-description: Todo app showcasing mongobase — login, per-user data, offline mode, realtime sync.
+name: onebase_example
+description: Todo app showcasing onebase — login, per-user data, offline mode, realtime sync.
 publish_to: none
 version: 1.0.0
 
@@ -10,7 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  mongobase:
+  onebase:
     path: ../
   hooks_riverpod: ^3.0.0
   flutter_hooks: ^0.21.0

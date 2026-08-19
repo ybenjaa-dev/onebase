@@ -47,5 +47,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(port, () => {
-  console.log(`mongobase backend listening on :${port}`);
+  console.log(`onebase backend listening on :${port}`);
 });

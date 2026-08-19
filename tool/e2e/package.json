@@ -1,5 +1,5 @@
 {
-  "name": "mongobase-e2e",
+  "name": "onebase-e2e",
   "private": true,
   "type": "module",
   "scripts": {

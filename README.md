@@ -1,37 +1,39 @@
-# mongobase
+# onebase
 
-**Firebase for MongoDB in Flutter.**
+**Firebase for Flutter, on your own MongoDB and S3.**
 Offline-first data, realtime sync and file storage — one package, one tiny
 backend.
 
 MongoDB retired Realm, Atlas Device Sync and the Data API (EOL September 30,
 2025), leaving Flutter developers without an official "no backend" path to
-MongoDB. `mongobase` fills that gap: a Firestore-style API over a local
-SQLite replica, a sync engine built into the package, and a CLI that
-generates the one small server that stands between your app and MongoDB.
+MongoDB. `onebase` fills that gap and then covers the rest of what an app
+needs: a Firestore-style API over a local SQLite replica, a sync engine built
+into the package, presigned file storage on any S3-compatible bucket, and a
+CLI that generates the one small server in between.
 
-No third-party sync service. No vendor account. Nothing to keep running
-except your database and one container.
+One name because it is one thing: your documents, your files and your realtime
+channel behind a single URL. No third-party sync service, no vendor account,
+nothing to keep running except your database, your bucket and one container.
 
 ```dart
-await Mongobase.init(MongobaseConfig(
+await Onebase.init(OnebaseConfig(
   apiUrl: 'https://your-backend.example.com',
   tokenProvider: TokenProvider(() async => myAuth.currentJwt),
-  schema: mongobaseSchema, // generated
+  schema: onebaseSchema, // generated
 ));
 
 // Typed collections and models are generated from your YAML — no
 // hand-written model class, no converter wiring.
-Stream<List<Todo>> live = MongobaseDb.todos
+Stream<List<Todo>> live = OnebaseDb.todos
     .where('done', isEqualTo: false)
     .orderBy('created_at', descending: true)
     .limit(50)
     .watch();
 
 // Offline-first writes — instant locally, synced in the background:
-final id = await MongobaseDb.todos.insert(Todo(title: 'Ship it', done: false));
-await MongobaseDb.todos.update(id, {'done': true});
-await MongobaseDb.todos.delete(id);
+final id = await OnebaseDb.todos.insert(Todo(title: 'Ship it', done: false));
+await OnebaseDb.todos.update(id, {'done': true});
+await OnebaseDb.todos.delete(id);
 ```
 
 ## How it works
@@ -79,13 +81,13 @@ storage:
 ```
 
 ```dart
-final ref = Mongobase.storage.ref('avatars/me.png');
+final ref = Onebase.storage.ref('avatars/me.png');
 
 await ref.putData(await file.readAsBytes());
 final url = await ref.getDownloadUrl();   // hand straight to Image.network
 await ref.delete();
 
-final mine = await Mongobase.storage.bucket('avatars').list();
+final mine = await Onebase.storage.bucket('avatars').list();
 ```
 
 Bytes go **straight from the device to your object store** with a short-lived
@@ -114,9 +116,9 @@ later, because holding file bytes in the local database would bloat it.
 ## Offline or online — one line
 
 ```dart
-MongobaseConfig(
-  mode: MongobaseMode.offline,  // default: local replica, works with no network
-  // mode: MongobaseMode.online, // thin client: every read and write hits the backend
+OnebaseConfig(
+  mode: OnebaseMode.offline,  // default: local replica, works with no network
+  // mode: OnebaseMode.online, // thin client: every read and write hits the backend
   realtime: true,                // live changes in either mode
   realtimeCollections: {'todos'}, // optional: subscribe to part of the schema
 )
@@ -138,13 +140,13 @@ Your app code is identical in both. Switching is one line.
 
 ```yaml
 dependencies:
-  mongobase: ^0.3.0
+  onebase: ^0.3.0
 ```
 
-**2. Describe your data** — create `mongobase.yaml`:
+**2. Describe your data** — create `onebase.yaml`:
 
 ```bash
-dart run mongobase:setup --init
+dart run onebase:setup --init
 ```
 
 ```yaml
@@ -169,14 +171,14 @@ model, and enforced by the backend on every whole-document write. Add
 **3. Generate everything**
 
 ```bash
-dart run mongobase:setup
+dart run onebase:setup
 ```
 
 This writes:
 
 | Path | What it is |
 |---|---|
-| `lib/mongobase_schema.g.dart` | Typed models (`Todo`), typed collections (`MongobaseDb.todos`), and the runtime schema |
+| `lib/onebase_schema.g.dart` | Typed models (`Todo`), typed collections (`OnebaseDb.todos`), and the runtime schema |
 | `backend/` | Your server: five routes, a Dockerfile, and a Vercel adapter |
 
 **4. Run the backend anywhere**
@@ -196,7 +198,7 @@ complete Todo app with login, offline banner and realtime sync.
 
 ## Auth: bring your own JWTs
 
-`mongobase` is auth-agnostic — anything that issues JWTs works:
+`onebase` is auth-agnostic — anything that issues JWTs works:
 
 ```dart
 // Supabase Auth
@@ -226,14 +228,14 @@ The backend's `AUTH_MODE` decides how those tokens are verified. It has
 `JWT_ISSUER` is optional in every mode; set it whenever your provider
 publishes an `iss` claim.
 
-Call `Mongobase.instance.refreshToken()` after sign-in/out, and
-`Mongobase.instance.clearLocalData()` on sign-out so the next user can't see
+Call `Onebase.instance.refreshToken()` after sign-in/out, and
+`Onebase.instance.clearLocalData()` on sign-out so the next user can't see
 cached documents.
 
 ## Typed models
 
 ```dart
-final todos = Mongobase.collection('todos').withConverter<Todo>(
+final todos = Onebase.collection('todos').withConverter<Todo>(
   fromJson: Todo.fromJson,
   toJson: (todo) => todo.toJson(),
 );
@@ -256,7 +258,7 @@ final String id = await todos.insert(Todo(title: 'Ship it'));
 - **Every route verifies the JWT** — reads and writes alike — with pinned
   algorithms and, in `jwks` mode, a required audience.
 - **Only declared fields are written.** The upload endpoint projects every
-  incoming document onto the fields in `mongobase.yaml` and drops the rest
+  incoming document onto the fields in `onebase.yaml` and drops the rest
   (logging what it dropped). A patched client cannot set a server-managed
   field like `role` or `credits` just by putting it in the payload.
 - **Writes never clobber server state.** `put` is a `$set` upsert, not a
@@ -279,12 +281,12 @@ final String id = await todos.insert(Todo(title: 'Ship it'));
   so a bad op can never wedge the upload queue; only transient failures
   return 5xx and retry.
 - **Deletes leave your collections clean.** They are recorded in
-  `_mongobase_tombstones` with a 30-day TTL so other devices learn about
+  `_onebase_tombstones` with a 30-day TTL so other devices learn about
   them, rather than flagging your documents as deleted forever.
 
 ## vs Firebase
 
-| | Firestore | mongobase (MongoDB) |
+| | Firestore | onebase (MongoDB) |
 |---|---|---|
 | Reactive queries | `snapshots()` | `watch()` |
 | Offline-first | Cache-based | Full local SQLite replica |
@@ -303,7 +305,7 @@ final String id = await todos.insert(Todo(title: 'Ship it'));
   wins.
 - **Realtime needs a long-lived connection.** Container hosts (Fly, Railway,
   Render, Cloud Run, a VPS) hold it fine. Short-lived serverless functions cut
-  it, and mongobase falls back to polling — correct, just not instant.
+  it, and onebase falls back to polling — correct, just not instant.
 - **Offline mode has a ~1s floor** on how quickly another device's change can
   arrive through `/pull`, because pull deliberately ignores the most recent
   second (see the sync notes above). Realtime bypasses this; your own writes
@@ -314,18 +316,18 @@ final String id = await todos.insert(Todo(title: 'Ship it'));
   role-based rules are on the roadmap.
 - No aggregation pipeline on-device; `count()` and filters cover the common
   cases.
-- Removing a field from `mongobase.yaml` leaves its column in the local
+- Removing a field from `onebase.yaml` leaves its column in the local
   database so a downgrade cannot lose data.
 - **Uploads are not offline-queued.** Document writes survive with no network;
   file uploads need a connection and throw if they can't reach the store.
 - File listings come from metadata the backend records, not from the object
   store, so a file put there by some other tool won't appear until it is
-  uploaded through mongobase.
+  uploaded through onebase.
 
 ## Diagnosing a project
 
 ```bash
-dart run mongobase:setup --doctor --api-url https://your-backend.example.com
+dart run onebase:setup --doctor --api-url https://your-backend.example.com
 ```
 
 Checks the things that actually break apps: a schema that drifted from the
@@ -334,17 +336,17 @@ the backend answers at all. Each finding comes with the command that fixes it.
 
 ## Troubleshooting
 
-Every `MongobaseException` carries a `hint` with the likely fix. Common ones:
+Every `OnebaseException` carries a `hint` with the likely fix. Common ones:
 
-- *"Unknown collection"* — add it to `mongobase.yaml`, re-run
-  `dart run mongobase:setup`, redeploy the backend.
+- *"Unknown collection"* — add it to `onebase.yaml`, re-run
+  `dart run onebase:setup`, redeploy the backend.
 - *"Token is not a JWT"* — your `TokenProvider` returned a session object or
   API key instead of the raw JWT string.
 - *Sync returns 401* — the backend's `JWT_SECRET`/`JWKS_URL` doesn't match
-  what signs your tokens. Check `Mongobase.instance.status.error`.
+  what signs your tokens. Check `Onebase.instance.status.error`.
 - *Nothing syncs down* — run `--doctor --api-url ...`; the usual cause is a
   backend deployed from an older schema.
-- *Realtime never connects* — check `Mongobase.instance.isRealtimeConnected`.
+- *Realtime never connects* — check `Onebase.instance.isRealtimeConnected`.
   Serverless hosts cut long connections; deploy the container image if you
   need instant updates.
 - *Writes never leave the queue* — `status.pendingWrites` stays above zero;

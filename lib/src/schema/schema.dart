@@ -1,7 +1,7 @@
 import '../errors.dart';
 import 'storage_schema.dart';
 
-/// Field types supported in `mongobase.yaml` and the Dart schema.
+/// Field types supported in `onebase.yaml` and the Dart schema.
 ///
 /// Each maps to a SQLite storage type; values are converted transparently
 /// when reading and writing documents.
@@ -27,7 +27,7 @@ enum MongoFieldType {
 
   const MongoFieldType(this.yamlName);
 
-  /// The name used in `mongobase.yaml`.
+  /// The name used in `onebase.yaml`.
   final String yamlName;
 
   static MongoFieldType parse(String value) {
@@ -66,7 +66,7 @@ class MongoCollectionSchema {
       throw SchemaParseException(
         'Collection "$name" declares reserved field(s): '
         '${reserved.join(', ')}.',
-        hint: 'Names starting with an underscore are managed by mongobase '
+        hint: 'Names starting with an underscore are managed by onebase '
             '(for example `_updated_at`). Rename the field.',
       );
     }
@@ -109,7 +109,7 @@ class MongoCollectionSchema {
   /// of being filtered per user.
   final bool shared;
 
-  /// Fields declared with a trailing `!` in `mongobase.yaml`.
+  /// Fields declared with a trailing `!` in `onebase.yaml`.
   ///
   /// They become non-nullable on the generated model and are enforced by the
   /// backend when a whole document is written.
@@ -124,7 +124,7 @@ class MongoCollectionSchema {
   /// `todos` → `Todo`, `categories` → `Category`, `people` → `People`.
   ///
   /// Deliberately simple: irregular plurals are not guessed, so set `model:`
-  /// in `mongobase.yaml` when the default reads wrong.
+  /// in `onebase.yaml` when the default reads wrong.
   static String modelNameFor(String collection) {
     var base = collection;
     if (base.endsWith('ies') && base.length > 3) {
@@ -155,10 +155,10 @@ class MongoCollectionSchema {
 
 /// The full schema: every collection the app syncs.
 ///
-/// Usually generated into `lib/mongobase_schema.g.dart` by
-/// `dart run mongobase:setup` from `mongobase.yaml`.
-class MongobaseSchema {
-  MongobaseSchema(
+/// Usually generated into `lib/onebase_schema.g.dart` by
+/// `dart run onebase:setup` from `onebase.yaml`.
+class OnebaseSchema {
+  OnebaseSchema(
     List<MongoCollectionSchema> collections, {
     StorageSchema? storage,
   })  : collections = {

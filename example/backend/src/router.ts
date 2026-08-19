@@ -55,6 +55,6 @@ export async function route(request: Request, env: Env): Promise<Response> {
 }
 
 export function configError(error: unknown): Response {
-  console.error('mongobase: invalid configuration', error);
+  console.error('onebase: invalid configuration', error);
   return json(500, { error: 'backend is misconfigured' });
 }

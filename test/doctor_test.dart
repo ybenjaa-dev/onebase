@@ -1,10 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mongobase/src/cli/doctor.dart';
-import 'package:mongobase/src/cli/generate_dart_schema.dart';
-import 'package:mongobase/src/cli/templates/platforms.dart';
-import 'package:mongobase/src/schema/schema_parser.dart';
+import 'package:onebase/src/cli/doctor.dart';
+import 'package:onebase/src/cli/generate_dart_schema.dart';
+import 'package:onebase/src/cli/templates/platforms.dart';
+import 'package:onebase/src/schema/schema_parser.dart';
 import 'package:path/path.dart' as p;
 
 const _yaml = '''
@@ -20,7 +20,7 @@ collections:
 void main() {
   late Directory root;
 
-  setUp(() => root = Directory.systemTemp.createTempSync('mongobase_doctor'));
+  setUp(() => root = Directory.systemTemp.createTempSync('onebase_doctor'));
   tearDown(() => root.deleteSync(recursive: true));
 
   void write(String relative, String content) {
@@ -31,9 +31,9 @@ void main() {
 
   /// A project generated exactly as the CLI would.
   void scaffold({String yaml = _yaml}) {
-    write('mongobase.yaml', yaml);
+    write('onebase.yaml', yaml);
     final schema = parseSchemaYaml(yaml);
-    write('lib/mongobase_schema.g.dart', generateDartSchema(schema));
+    write('lib/onebase_schema.g.dart', generateDartSchema(schema));
     generateBackendFiles(schema).forEach((path, content) {
       write('backend/$path', content);
     });
@@ -54,7 +54,7 @@ void main() {
   });
 
   test('reports a schema that does not parse', () async {
-    write('mongobase.yaml', 'collections: []');
+    write('onebase.yaml', 'collections: []');
     final findings = await diagnose(root: root.path);
     expect(findings.single.level, DiagnosisLevel.error);
     expect(findings.single.title, contains('does not parse'));
@@ -77,7 +77,7 @@ JWT_SECRET=${'x' * 40}
   group('drift', () {
     test('catches a stale generated Dart schema', () async {
       scaffold();
-      write('lib/mongobase_schema.g.dart', '// stale');
+      write('lib/onebase_schema.g.dart', '// stale');
       final findings = await diagnose(root: root.path);
       expect(findingFor(findings, 'out of date').level, DiagnosisLevel.error);
     });
@@ -85,7 +85,7 @@ JWT_SECRET=${'x' * 40}
     test('catches a backend generated from a different schema', () async {
       scaffold();
       // Add a collection to the YAML but leave the backend as it was.
-      write('mongobase.yaml', '''
+      write('onebase.yaml', '''
 $_yaml
   notes:
     owner_field: owner_id
@@ -94,8 +94,8 @@ $_yaml
       owner_id: text
 ''');
       final schema = parseSchemaYaml(
-          File(p.join(root.path, 'mongobase.yaml')).readAsStringSync());
-      write('lib/mongobase_schema.g.dart', generateDartSchema(schema));
+          File(p.join(root.path, 'onebase.yaml')).readAsStringSync());
+      write('lib/onebase_schema.g.dart', generateDartSchema(schema));
 
       final findings = await diagnose(root: root.path);
       final drift = findingFor(findings, 'different schema');
@@ -104,8 +104,8 @@ $_yaml
     });
 
     test('reports a missing backend', () async {
-      write('mongobase.yaml', _yaml);
-      write('lib/mongobase_schema.g.dart',
+      write('onebase.yaml', _yaml);
+      write('lib/onebase_schema.g.dart',
           generateDartSchema(parseSchemaYaml(_yaml)));
       final findings = await diagnose(root: root.path);
       expect(findingFor(findings, 'core.ts is missing').level,

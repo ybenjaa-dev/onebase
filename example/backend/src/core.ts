@@ -7,7 +7,7 @@ type FieldType = 'text' | 'int' | 'double' | 'bool' | 'datetime' | 'json';
 
 interface CollectionSpec {
   ownerField?: string;
-  /** Fields declared with a trailing `!` in mongobase.yaml. */
+  /** Fields declared with a trailing `!` in onebase.yaml. */
   required?: string[];
   fields: Record<string, FieldType>;
 }
@@ -61,7 +61,7 @@ const STORAGE: Record<string, BucketSpec> = {
 };
 
 /** Metadata for uploaded files. Keyed by the object key, so it is unique. */
-const FILES = '_mongobase_files';
+const FILES = '_onebase_files';
 
 /** How long a presigned URL stays valid. Long enough for a slow upload on a
  *  bad connection, short enough that a leaked URL expires quickly. */
@@ -88,7 +88,7 @@ const UPDATED_AT = '_updated_at';
  * each tombstone after 30 days — a client offline for longer re-syncs from
  * scratch instead of missing a delete.
  */
-const TOMBSTONES = '_mongobase_tombstones';
+const TOMBSTONES = '_onebase_tombstones';
 const TOMBSTONE_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 /** Never accepted from a client, never echoed back as a data field. */
@@ -263,7 +263,7 @@ export function readEnv(get: (key: string) => string | undefined): Env {
 
   if (authMode === 'dev') {
     console.warn(
-      'mongobase: AUTH_MODE=dev — the /token endpoint will sign a JWT for ' +
+      'onebase: AUTH_MODE=dev — the /token endpoint will sign a JWT for ' +
         'any email address. Switch to AUTH_MODE=jwks (or hs256) before ' +
         'letting real users near this deployment.',
     );
@@ -368,7 +368,7 @@ function convertDocument(
   return { doc, dropped };
 }
 
-// mongobase generates UUID string ids; documents created server-side may
+// onebase generates UUID string ids; documents created server-side may
 // use ObjectId. Match either representation. Always an `$in` so the filter
 // never contributes a derived `_id` to an upsert (which would conflict with
 // `$setOnInsert`).
@@ -467,7 +467,7 @@ async function applyOps(
       skipped.push({
         id: op.id,
         collection: op.collection,
-        reason: 'unknown collection — re-run `dart run mongobase:setup` and redeploy',
+        reason: 'unknown collection — re-run `dart run onebase:setup` and redeploy',
       });
       continue;
     }
@@ -623,7 +623,7 @@ async function applyUpload(
       if (!isTransactionUnsupportedError(error)) throw error;
       transactionsSupported = false;
       console.warn(
-        'mongobase: this MongoDB deployment does not support transactions ' +
+        'onebase: this MongoDB deployment does not support transactions ' +
           '(needs a replica set). Falling back to per-operation writes.',
       );
     } finally {
@@ -673,7 +673,7 @@ async function authenticate(
     return { userId: await verifyToken(authorization.slice(7), env) };
   } catch (error) {
     // Do not echo the verification error: it can leak configuration details.
-    console.warn('mongobase: token rejected', error);
+    console.warn('onebase: token rejected', error);
     return { response: json(401, { error: 'invalid token' }) };
   }
 }
@@ -721,12 +721,12 @@ export async function handlePush(
     await ensureIndexes(client, env);
     const result = await applyUpload(client, env.MONGO_DB, auth.userId, ops);
     if (result.skipped.length > 0) {
-      console.warn('mongobase push: skipped ops', JSON.stringify(result.skipped));
+      console.warn('onebase push: skipped ops', JSON.stringify(result.skipped));
     }
     if (result.dropped.length > 0) {
       console.warn(
-        'mongobase push: dropped undeclared fields (add them to ' +
-          'mongobase.yaml and redeploy if they are meant to sync)',
+        'onebase push: dropped undeclared fields (add them to ' +
+          'onebase.yaml and redeploy if they are meant to sync)',
         JSON.stringify(result.dropped),
       );
     }
@@ -734,7 +734,7 @@ export async function handlePush(
     // not turned into errors, so the client queue never gets stuck.
     return json(200, result);
   } catch (error) {
-    console.error('mongobase push: transient failure', error);
+    console.error('onebase push: transient failure', error);
     return json(503, { error: 'transient failure, client will retry' });
   }
 }
@@ -839,7 +839,7 @@ export async function handlePull(
       has_more: docsFull || tombsFull,
     });
   } catch (error) {
-    console.error('mongobase pull: transient failure', error);
+    console.error('onebase pull: transient failure', error);
     return json(503, { error: 'transient failure, client will retry' });
   }
 }
@@ -1025,7 +1025,7 @@ export async function handleQuery(
       documents: documents.map((document) => projectDocument(document, spec)),
     });
   } catch (error) {
-    console.error('mongobase query: failure', error);
+    console.error('onebase query: failure', error);
     return json(503, { error: 'transient failure, retry' });
   }
 }
@@ -1138,7 +1138,7 @@ export async function handleStream(
       });
 
       changes.on('error', (error: unknown) => {
-        console.warn('mongobase stream: change stream error', error);
+        console.warn('onebase stream: change stream error', error);
         void shutdown();
       });
       changes.on('close', () => void shutdown());
@@ -1359,7 +1359,7 @@ export async function handleStorageComplete(
       );
     return json(200, { key: parsed.key, path: parsed.path });
   } catch (error) {
-    console.error('mongobase storage: complete failed', error);
+    console.error('onebase storage: complete failed', error);
     return json(503, { error: 'transient failure, retry' });
   }
 }
@@ -1419,14 +1419,14 @@ export async function handleStorageDelete(
     );
     // S3 answers 204 for a delete, and also for a key that was never there.
     if (!response.ok && response.status !== 404) {
-      console.error('mongobase storage: delete failed', response.status);
+      console.error('onebase storage: delete failed', response.status);
       return json(503, { error: 'could not delete the file, retry' });
     }
 
     await files.deleteOne({ _id: parsed.key } as never);
     return json(200, { key: parsed.key });
   } catch (error) {
-    console.error('mongobase storage: delete failed', error);
+    console.error('onebase storage: delete failed', error);
     return json(503, { error: 'transient failure, retry' });
   }
 }
@@ -1479,7 +1479,7 @@ export async function handleStorageList(
       })),
     });
   } catch (error) {
-    console.error('mongobase storage: list failed', error);
+    console.error('onebase storage: list failed', error);
     return json(503, { error: 'transient failure, retry' });
   }
 }
@@ -1499,24 +1499,24 @@ function ensureIndexes(client: MongoClient, env: Env): Promise<void> {
       const key: Record<string, 1> = {};
       if (spec.ownerField) key[spec.ownerField] = 1;
       key[UPDATED_AT] = 1;
-      await db.collection(name).createIndex(key, { name: 'mongobase_sync' });
+      await db.collection(name).createIndex(key, { name: 'onebase_sync' });
     }
     await db
       .collection(TOMBSTONES)
       .createIndex(
         { collection: 1, owner: 1, deleted_at: 1 },
-        { name: 'mongobase_tombstones' },
+        { name: 'onebase_tombstones' },
       );
     await db
       .collection(TOMBSTONES)
       .createIndex(
         { deleted_at: 1 },
-        { name: 'mongobase_ttl', expireAfterSeconds: TOMBSTONE_TTL_SECONDS },
+        { name: 'onebase_ttl', expireAfterSeconds: TOMBSTONE_TTL_SECONDS },
       );
   })().catch((error: unknown) => {
     // Never block writes on index creation — retry on the next request.
     indexesReady = null;
-    console.warn('mongobase: index setup failed, continuing', error);
+    console.warn('onebase: index setup failed, continuing', error);
   });
   return indexesReady;
 }
@@ -1550,9 +1550,9 @@ export async function handleToken(
 
   const sub = await stableUserId(email.trim().toLowerCase());
   const token = await new SignJWT({ email })
-    .setProtectedHeader({ alg: 'HS256', kid: 'mongobase-dev' })
+    .setProtectedHeader({ alg: 'HS256', kid: 'onebase-dev' })
     .setSubject(sub)
-    .setAudience(env.JWT_AUDIENCE ?? 'mongobase-dev')
+    .setAudience(env.JWT_AUDIENCE ?? 'onebase-dev')
     .setIssuedAt()
     .setExpirationTime('12h')
     .sign(new TextEncoder().encode(env.JWT_SECRET));

@@ -7,10 +7,10 @@ import '../config.dart';
 
 /// Dev-token auth against the generated `/token` endpoint. In a real app,
 /// replace this with your auth provider (Supabase, Firebase, Auth0, ...) and
-/// point mongobase's TokenProvider at its access token.
+/// point onebase's TokenProvider at its access token.
 class AuthService {
-  static const _tokenKey = 'mongobase_example.token';
-  static const _emailKey = 'mongobase_example.email';
+  static const _tokenKey = 'onebase_example.token';
+  static const _emailKey = 'onebase_example.email';
 
   String? token;
   String? email;

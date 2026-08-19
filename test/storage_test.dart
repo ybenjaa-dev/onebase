@@ -4,12 +4,12 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:mongobase/src/auth/token_provider.dart';
-import 'package:mongobase/src/errors.dart';
-import 'package:mongobase/src/schema/schema_parser.dart';
-import 'package:mongobase/src/schema/storage_schema.dart';
-import 'package:mongobase/src/storage/storage.dart';
-import 'package:mongobase/src/sync/sync_api.dart';
+import 'package:onebase/src/auth/token_provider.dart';
+import 'package:onebase/src/errors.dart';
+import 'package:onebase/src/schema/schema_parser.dart';
+import 'package:onebase/src/schema/storage_schema.dart';
+import 'package:onebase/src/storage/storage.dart';
+import 'package:onebase/src/sync/sync_api.dart';
 
 void main() {
   final schema = parseSchemaYaml('''
@@ -40,7 +40,7 @@ storage:
     uploadedBytes = [];
   });
 
-  MongobaseStorage storageWith({
+  OnebaseStorage storageWith({
     Map<String, Object?> Function(String route)? respond,
     int uploadStatus = 200,
   }) {
@@ -87,7 +87,7 @@ storage:
             headers: {'content-type': 'application/json'});
       }),
     );
-    return MongobaseStorage(api, schema);
+    return OnebaseStorage(api, schema);
   }
 
   group('references', () {

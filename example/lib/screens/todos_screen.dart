@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:mongobase/mongobase.dart';
+import 'package:onebase/onebase.dart';
 
-import '../mongobase_schema.g.dart';
+import '../onebase_schema.g.dart';
 import '../providers.dart';
 
 class TodosScreen extends ConsumerWidget {
@@ -84,12 +84,12 @@ class _AddTodoForm extends HookConsumerWidget {
       try {
         // Offline-first: resolves immediately, syncs in the background.
         // The model and its id are generated — nothing hand-written.
-        await MongobaseDb.todos.insert(
+        await OnebaseDb.todos.insert(
           Todo(title: title, done: false, createdAt: DateTime.now()),
         );
         if (!context.mounted) return;
         Navigator.of(context).pop();
-      } on MongobaseException catch (error) {
+      } on OnebaseException catch (error) {
         if (!context.mounted) return;
         isSaving.value = false;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -182,7 +182,7 @@ class _TodoTile extends ConsumerWidget {
 }
 
 /// Live connectivity strip: green when synced, amber while syncing, grey
-/// offline. Driven by Mongobase.instance.statusStream.
+/// offline. Driven by Onebase.instance.statusStream.
 class _SyncBanner extends ConsumerWidget {
   const _SyncBanner();
 
@@ -285,8 +285,8 @@ class _ErrorState extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             Text(
-              error is MongobaseException
-                  ? (error as MongobaseException).message
+              error is OnebaseException
+                  ? (error as OnebaseException).message
                   : '$error',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall,

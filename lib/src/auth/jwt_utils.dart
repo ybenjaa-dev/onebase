@@ -4,7 +4,7 @@ import '../errors.dart';
 
 /// Decoded (unverified) JWT payload claims.
 ///
-/// mongobase never verifies signatures client-side — the backend does that
+/// onebase never verifies signatures client-side — the backend does that
 /// on every request. This only reads `sub` and `exp` for owner-field
 /// auto-fill and refresh timing.
 class JwtClaims {
@@ -58,7 +58,7 @@ JwtClaims decodeJwt(String token) {
   if (subject is! String || subject.isEmpty) {
     throw const InvalidTokenException(
       'JWT has no "sub" claim.',
-      hint: 'mongobase identifies users by the `sub` claim. Configure your '
+      hint: 'onebase identifies users by the `sub` claim. Configure your '
           'auth provider (or token endpoint) to include it.',
     );
   }

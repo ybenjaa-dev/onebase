@@ -1,5 +1,5 @@
 {
-  "name": "mongobase-backend",
+  "name": "onebase-backend",
   "private": true,
   "type": "module",
   "scripts": {

@@ -10,9 +10,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:integration_test/integration_test.dart';
-import 'package:mongobase/mongobase.dart';
-import 'package:mongobase_example/config.dart';
-import 'package:mongobase_example/mongobase_schema.g.dart';
+import 'package:onebase/onebase.dart';
+import 'package:onebase_example/config.dart';
+import 'package:onebase_example/onebase_schema.g.dart';
 
 Future<String> fetchDevToken(String email) async {
   final response = await http.post(
@@ -29,11 +29,11 @@ Future<String> fetchDevToken(String email) async {
 /// Uploads drain in the background; a fresh download after clearing local
 /// data proves the write reached MongoDB itself.
 Future<List<Map<String, Object?>>> roundTrip() async {
-  final client = Mongobase.instance;
+  final client = Onebase.instance;
   await client.clearLocalData();
   await client.refreshToken();
   await client.waitForFirstSync().timeout(const Duration(seconds: 30));
-  return Mongobase.collection('todos').find();
+  return Onebase.collection('todos').find();
 }
 
 Future<void> waitForUpload() async {
@@ -51,22 +51,22 @@ void main() {
     final token = await fetchDevToken(email);
 
     final databasePath =
-        '${Directory.systemTemp.createTempSync('mongobase_e2e').path}/e2e.db';
-    await Mongobase.init(
-      MongobaseConfig(
+        '${Directory.systemTemp.createTempSync('onebase_e2e').path}/e2e.db';
+    await Onebase.init(
+      OnebaseConfig(
         apiUrl: AppConfig.apiUrl,
         tokenProvider: TokenProvider.static(token),
-        schema: mongobaseSchema,
+        schema: onebaseSchema,
       ),
       databasePath: databasePath,
     );
-    addTearDown(Mongobase.close);
+    addTearDown(Onebase.close);
 
-    await Mongobase.instance
+    await Onebase.instance
         .waitForFirstSync()
         .timeout(const Duration(seconds: 30));
 
-    final todos = Mongobase.collection('todos');
+    final todos = Onebase.collection('todos');
     final title = 'e2e todo $runId';
 
     // INSERT — offline-first write, then prove it reached MongoDB.
@@ -87,7 +87,7 @@ void main() {
 
     // Owner isolation: the doc belongs to the JWT subject, assigned
     // server-side.
-    expect(syncedDoc['owner_id'], Mongobase.instance.currentUserId);
+    expect(syncedDoc['owner_id'], Onebase.instance.currentUserId);
 
     // UPDATE (patch) round-trip.
     await todos.update(id, {'done': true});
@@ -120,44 +120,44 @@ void main() {
 
     // User A writes a doc.
     final tokenA = await fetchDevToken('alice-$runId@test.dev');
-    final dirA = Directory.systemTemp.createTempSync('mongobase_e2e_a');
-    await Mongobase.init(
-      MongobaseConfig(
+    final dirA = Directory.systemTemp.createTempSync('onebase_e2e_a');
+    await Onebase.init(
+      OnebaseConfig(
         apiUrl: AppConfig.apiUrl,
         tokenProvider: TokenProvider.static(tokenA),
-        schema: mongobaseSchema,
+        schema: onebaseSchema,
       ),
       databasePath: '${dirA.path}/a.db',
     );
-    await Mongobase.instance
+    await Onebase.instance
         .waitForFirstSync()
         .timeout(const Duration(seconds: 30));
     final secret = 'alice secret $runId';
-    await Mongobase.collection('todos').insert({
+    await Onebase.collection('todos').insert({
       'title': secret,
       'done': false,
       'created_at': DateTime.now(),
     });
     await waitForUpload();
     expect((await roundTrip()).map((d) => d['title']), contains(secret));
-    await Mongobase.close();
+    await Onebase.close();
 
     // User B syncs and must not receive it.
     final tokenB = await fetchDevToken('bob-$runId@test.dev');
-    final dirB = Directory.systemTemp.createTempSync('mongobase_e2e_b');
-    await Mongobase.init(
-      MongobaseConfig(
+    final dirB = Directory.systemTemp.createTempSync('onebase_e2e_b');
+    await Onebase.init(
+      OnebaseConfig(
         apiUrl: AppConfig.apiUrl,
         tokenProvider: TokenProvider.static(tokenB),
-        schema: mongobaseSchema,
+        schema: onebaseSchema,
       ),
       databasePath: '${dirB.path}/b.db',
     );
-    addTearDown(Mongobase.close);
-    await Mongobase.instance
+    addTearDown(Onebase.close);
+    await Onebase.instance
         .waitForFirstSync()
         .timeout(const Duration(seconds: 30));
-    final bobSees = await Mongobase.collection('todos').find();
+    final bobSees = await Onebase.collection('todos').find();
     expect(bobSees.map((d) => d['title']), isNot(contains(secret)),
         reason: 'sync streams must isolate per user (server-side)');
   });
