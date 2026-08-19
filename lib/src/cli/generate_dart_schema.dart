@@ -27,15 +27,6 @@ String generateDartSchema(OnebaseSchema schema) {
       buffer.writeln("    ownerField: '${collection.ownerField}',");
     }
     if (collection.shared) buffer.writeln('    shared: true,');
-    final scope = collection.scope;
-    if (scope != null) {
-      buffer
-        ..writeln('    scope: const GroupScope(')
-        ..writeln("      membership: '${scope.membership}',")
-        ..writeln("      field: '${scope.field}',")
-        ..writeln('      write: GroupWrite.${scope.write.name},')
-        ..writeln('    ),');
-    }
     if (collection.requiredFields.isNotEmpty) {
       final names = collection.requiredFields
           .map((field) => "'$field'")
@@ -46,27 +37,8 @@ String generateDartSchema(OnebaseSchema schema) {
       ..writeln("    model: '${collection.model}',")
       ..writeln('  ),');
   }
-  buffer.writeln(']');
-  if (schema.memberships.isNotEmpty) {
-    buffer.writeln('  , memberships: [');
-    for (final membership in schema.memberships.values) {
-      buffer
-        ..writeln('    MembershipSchema(')
-        ..writeln("      '${membership.name}',")
-        ..writeln("      collection: '${membership.collection}',")
-        ..writeln("      userField: '${membership.userField}',")
-        ..writeln("      groupField: '${membership.groupField}',");
-      if (membership.roleField != null) {
-        buffer.writeln("      roleField: '${membership.roleField}',");
-      }
-      buffer
-        ..writeln("      adminRole: '${membership.adminRole}',")
-        ..writeln('    ),');
-    }
-    buffer.writeln('  ]');
-  }
   buffer
-    ..writeln(');')
+    ..writeln(']);')
     ..writeln()
     ..writeln('/// Typed collections, ready to use:')
     ..writeln('///')

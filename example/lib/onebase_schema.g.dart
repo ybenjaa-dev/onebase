@@ -37,16 +37,19 @@ final onebaseSchema = OnebaseSchema([
 /// ```
 abstract final class OnebaseDb {
   static TypedCollection<Todo> get todos =>
-      Onebase.collection('todos').withConverter<Todo>(
-        fromJson: Todo.fromJson,
-        toJson: (value) => value.toJson(),
-      );
+      Onebase.collection('todos')
+          .withConverter<Todo>(
+            fromJson: Todo.fromJson,
+            toJson: (value) => value.toJson(),
+          );
 
   static TypedCollection<Category> get categories =>
-      Onebase.collection('categories').withConverter<Category>(
-        fromJson: Category.fromJson,
-        toJson: (value) => value.toJson(),
-      );
+      Onebase.collection('categories')
+          .withConverter<Category>(
+            fromJson: Category.fromJson,
+            toJson: (value) => value.toJson(),
+          );
+
 }
 
 /// A document in `todos`.
@@ -128,11 +131,11 @@ class Todo {
           createdAt == other.createdAt &&
           priority == other.priority &&
           meta == other.meta &&
-          ownerId == other.ownerId;
+          ownerId == other.ownerId
+;
 
   @override
-  int get hashCode =>
-      Object.hashAll([id, title, done, createdAt, priority, meta, ownerId]);
+  int get hashCode => Object.hashAll([id, title, done, createdAt, priority, meta, ownerId]);
 
   @override
   String toString() => 'Todo(${toJson()})';
@@ -186,7 +189,8 @@ class Category {
       other is Category &&
           id == other.id &&
           name == other.name &&
-          color == other.color;
+          color == other.color
+;
 
   @override
   int get hashCode => Object.hashAll([id, name, color]);

@@ -61,7 +61,7 @@ OnebaseSchema parseSchemaYaml(String yamlSource) {
       );
     }
 
-    const knownKeys = {'fields', 'owner_field', 'shared', 'scope', 'model'};
+    const knownKeys = {'fields', 'owner_field', 'shared', 'model'};
     final unknown = value.keys
         .map((k) => k.toString())
         .where((k) => !knownKeys.contains(k));
@@ -122,154 +122,13 @@ OnebaseSchema parseSchemaYaml(String yamlSource) {
         fields: fields,
         ownerField: value['owner_field']?.toString(),
         shared: shared as bool? ?? false,
-        scope: _parseScope(value['scope'], name),
         requiredFields: required,
         model: value['model']?.toString(),
       ),
     );
   }
 
-  return OnebaseSchema(
-    collections,
-    storage: _parseStorage(root['storage']),
-    memberships: _parseMemberships(root['memberships']),
-  );
-}
-
-/// Parses one collection's optional `scope:` section.
-///
-/// ```yaml
-/// scope:
-///   membership: family     # a name from the top-level `memberships:`
-///   field: family_id       # or `id` when the document id is the group id
-///   write: member          # owner | member | admin | none
-/// ```
-GroupScope? _parseScope(Object? node, String collection) {
-  if (node == null) return null;
-  if (node is! YamlMap) {
-    throw SchemaParseException(
-      '`scope` of collection "$collection" must be a map.',
-      hint: 'scope: {membership: family, field: family_id}',
-    );
-  }
-
-  const knownKeys = {'membership', 'field', 'write'};
-  final unknown = node.keys
-      .map((k) => k.toString())
-      .where((k) => !knownKeys.contains(k));
-  if (unknown.isNotEmpty) {
-    throw SchemaParseException(
-      '`scope` of collection "$collection" has unknown option(s): '
-      '${unknown.join(', ')}.',
-      hint: 'Valid options: ${knownKeys.join(', ')}.',
-    );
-  }
-
-  final membership = node['membership']?.toString();
-  if (membership == null || membership.isEmpty) {
-    throw SchemaParseException(
-      '`scope` of collection "$collection" has no `membership`.',
-      hint: 'Name one of the memberships declared under `memberships:`.',
-    );
-  }
-  final field = node['field']?.toString();
-  if (field == null || field.isEmpty) {
-    throw SchemaParseException(
-      '`scope` of collection "$collection" has no `field`.',
-      hint:
-          'Name the field holding the group id, or `field: id` when the '
-          'document id is itself the group id.',
-    );
-  }
-
-  final write = node['write']?.toString();
-  return GroupScope(
-    membership: membership,
-    field: field,
-    write: write == null ? GroupWrite.member : GroupWrite.parse(write),
-  );
-}
-
-/// Parses the optional top-level `memberships:` section.
-///
-/// ```yaml
-/// memberships:
-///   family:
-///     collection: family_members
-///     user_field: user_id
-///     group_field: family_id
-///     role_field: role       # optional — required by `write: admin`
-///     admin_role: admin      # optional — defaults to "admin"
-/// ```
-List<MembershipSchema> _parseMemberships(Object? node) {
-  if (node == null) return const [];
-  if (node is! YamlMap) {
-    throw const SchemaParseException(
-      '`memberships` must be a map of membership names.',
-      hint:
-          'memberships:\n'
-          '  family:\n'
-          '    collection: family_members\n'
-          '    user_field: user_id\n'
-          '    group_field: family_id',
-    );
-  }
-
-  final memberships = <MembershipSchema>[];
-  for (final MapEntry(:key, :value) in node.entries) {
-    final name = key.toString();
-    if (value is! YamlMap) {
-      throw SchemaParseException(
-        'Membership "$name" must be a map.',
-        hint: 'Give it `collection`, `user_field` and `group_field`.',
-      );
-    }
-
-    const knownKeys = {
-      'collection',
-      'user_field',
-      'group_field',
-      'role_field',
-      'admin_role',
-    };
-    final unknown = value.keys
-        .map((k) => k.toString())
-        .where((k) => !knownKeys.contains(k));
-    if (unknown.isNotEmpty) {
-      throw SchemaParseException(
-        'Membership "$name" has unknown option(s): ${unknown.join(', ')}.',
-        hint: 'Valid options: ${knownKeys.join(', ')}.',
-      );
-    }
-
-    String require(String option) {
-      final raw = value[option]?.toString();
-      if (raw == null || raw.isEmpty) {
-        throw SchemaParseException(
-          'Membership "$name" has no `$option`.',
-          hint:
-              'memberships:\n'
-              '  $name:\n'
-              '    collection: <collection holding the membership rows>\n'
-              '    user_field: <field with the member id>\n'
-              '    group_field: <field with the group id>',
-        );
-      }
-      return raw;
-    }
-
-    memberships.add(
-      MembershipSchema(
-        name,
-        collection: require('collection'),
-        userField: require('user_field'),
-        groupField: require('group_field'),
-        roleField: value['role_field']?.toString(),
-        adminRole: value['admin_role']?.toString() ?? 'admin',
-      ),
-    );
-  }
-  return memberships;
+  return OnebaseSchema(collections, storage: _parseStorage(root['storage']));
 }
 
 /// Parses the optional `storage:` section.
