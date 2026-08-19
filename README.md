@@ -1,5 +1,8 @@
 # onebase
 
+[![CI](https://github.com/ybenjaa-dev/onebase/actions/workflows/ci.yml/badge.svg)](https://github.com/ybenjaa-dev/onebase/actions/workflows/ci.yml)
+[![pub package](https://img.shields.io/pub/v/onebase.svg)](https://pub.dev/packages/onebase)
+
 **Firebase for Flutter — on your own MongoDB and S3.**
 
 Offline-first data, realtime sync, and file storage. One package in your app,

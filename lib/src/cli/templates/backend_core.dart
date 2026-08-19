@@ -133,6 +133,58 @@ const QUERY_OPERATORS: Record<string, string> = {
   in: '$in',
 };
 
+/**
+ * Request limits.
+ *
+ * A backend on the public internet with your database behind it needs a
+ * ceiling on what one caller can ask of it. Without these, an authenticated
+ * client can post an unbounded body or loop on a query and take the service
+ * down for everyone.
+ */
+const MAX_BODY_BYTES = 5 * 1024 * 1024;
+const MAX_OPS_PER_PUSH = 1000;
+
+/** Requests per user per window, per route class. */
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMITS: Record<string, number> = {
+  read: 600,
+  write: 300,
+  storage: 120,
+};
+
+/**
+ * A fixed-window counter, held in memory.
+ *
+ * Deliberately per-instance: it needs no Redis, and on a single container it
+ * is the whole story. Behind several instances each holds its own window, so
+ * treat the effective limit as the number below times the instance count —
+ * still a ceiling, just a looser one.
+ */
+const rateState = new Map<string, { count: number; resetAt: number }>();
+
+function rateLimit(userId: string, bucket: string): boolean {
+  const limit = RATE_LIMITS[bucket];
+  if (!limit) return true;
+
+  const key = `${bucket}:${userId}`;
+  const now = Date.now();
+  const entry = rateState.get(key);
+
+  if (!entry || now >= entry.resetAt) {
+    rateState.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    // Opportunistic sweep so the map cannot grow without bound.
+    if (rateState.size > 10_000) {
+      for (const [existing, value] of rateState) {
+        if (now >= value.resetAt) rateState.delete(existing);
+      }
+    }
+    return true;
+  }
+
+  entry.count++;
+  return entry.count <= limit;
+}
+
 /** How long a realtime connection is held before the client reconnects. */
 const STREAM_MAX_LIFETIME_MS = 1000 * 60 * 55;
 
@@ -675,6 +727,7 @@ async function authenticate(
   request: Request,
   env: Env,
   method: string = 'POST',
+  bucket?: string,
 ): Promise<{ userId: string } | { response: Response }> {
   if (request.method !== method) {
     return { response: json(405, { error: 'method not allowed' }) };
@@ -683,18 +736,43 @@ async function authenticate(
   if (!authorization.startsWith('Bearer ')) {
     return { response: json(401, { error: 'missing bearer token' }) };
   }
+  let userId: string;
   try {
-    return { userId: await verifyToken(authorization.slice(7), env) };
+    userId = await verifyToken(authorization.slice(7), env);
   } catch (error) {
     // Do not echo the verification error: it can leak configuration details.
     console.warn('onebase: token rejected', error);
     return { response: json(401, { error: 'invalid token' }) };
   }
+
+  if (bucket && !rateLimit(userId, bucket)) {
+    return {
+      response: new Response(
+        JSON.stringify({ error: 'rate limit exceeded, slow down' }),
+        {
+          status: 429,
+          headers: {
+            'content-type': 'application/json',
+            'retry-after': String(Math.ceil(RATE_LIMIT_WINDOW_MS / 1000)),
+          },
+        },
+      ),
+    };
+  }
+
+  return { userId };
 }
 
 async function readJson(request: Request): Promise<Record<string, unknown> | null> {
+  // Read as text first so an oversized body is rejected before it is parsed.
+  // Parsing it would mean holding both the raw bytes and the object graph.
+  const declared = Number(request.headers.get('content-length') ?? '0');
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return null;
+
   try {
-    const body = await request.json();
+    const text = await request.text();
+    if (text.length > MAX_BODY_BYTES) return null;
+    const body = JSON.parse(text);
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
       return null;
     }
@@ -715,7 +793,7 @@ export async function handlePush(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const auth = await authenticate(request, env);
+  const auth = await authenticate(request, env, 'POST', 'write');
   if ('response' in auth) return auth.response;
 
   const payload = (await readJson(request)) as PushPayload | null;
@@ -728,6 +806,13 @@ export async function handlePush(
     if (typeof entry !== 'object' || entry === null) continue;
     const list = (entry as { ops?: unknown }).ops;
     if (Array.isArray(list)) ops.push(...list);
+  }
+  if (ops.length > MAX_OPS_PER_PUSH) {
+    // The client splits large queues itself; a batch past this is a bug or an
+    // attempt to make one request do unbounded work.
+    return json(413, {
+      error: `too many operations in one push (${ops.length} > ${MAX_OPS_PER_PUSH})`,
+    });
   }
 
   try {
@@ -763,7 +848,7 @@ export async function handlePull(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const auth = await authenticate(request, env);
+  const auth = await authenticate(request, env, 'POST', 'read');
   if ('response' in auth) return auth.response;
 
   const body = await readJson(request);
@@ -929,7 +1014,7 @@ export async function handleQuery(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const auth = await authenticate(request, env);
+  const auth = await authenticate(request, env, 'POST', 'read');
   if ('response' in auth) return auth.response;
 
   const body = await readJson(request);
@@ -1111,7 +1196,7 @@ export async function handleStream(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const auth = await authenticate(request, env, 'GET');
+  const auth = await authenticate(request, env, 'GET', 'read');
   if ('response' in auth) return auth.response;
 
   const requested = new URL(request.url).searchParams.get('collections');
@@ -1345,7 +1430,7 @@ export async function handleStorageUploadUrl(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const auth = await authenticate(request, env);
+  const auth = await authenticate(request, env, 'POST', 'storage');
   if ('response' in auth) return auth.response;
 
   const parsed = await storageRequest(request, env, auth.userId);
@@ -1398,7 +1483,7 @@ export async function handleStorageComplete(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const auth = await authenticate(request, env);
+  const auth = await authenticate(request, env, 'POST', 'storage');
   if ('response' in auth) return auth.response;
 
   const parsed = await storageRequest(request, env, auth.userId);
@@ -1436,7 +1521,7 @@ export async function handleStorageDownloadUrl(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const auth = await authenticate(request, env);
+  const auth = await authenticate(request, env, 'POST', 'storage');
   if ('response' in auth) return auth.response;
 
   const parsed = await storageRequest(request, env, auth.userId);
@@ -1458,7 +1543,7 @@ export async function handleStorageDelete(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const auth = await authenticate(request, env);
+  const auth = await authenticate(request, env, 'POST', 'storage');
   if ('response' in auth) return auth.response;
 
   const parsed = await storageRequest(request, env, auth.userId);
@@ -1504,7 +1589,7 @@ export async function handleStorageList(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  const auth = await authenticate(request, env);
+  const auth = await authenticate(request, env, 'POST', 'storage');
   if ('response' in auth) return auth.response;
 
   const body = await readJson(request);

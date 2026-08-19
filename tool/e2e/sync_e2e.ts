@@ -326,6 +326,72 @@ await t('query caps the page size', async () => {
   assert.equal(res2.status, 400);
 });
 
+// ---------------------------------------------------------------- limits
+
+await t('an oversized body is refused before it is parsed', async () => {
+  const huge = 'x'.repeat(6 * 1024 * 1024);
+  const res = await handlePush(
+    req('/push', alice, { transactions: [{ id: 'tx', ops: [] }], pad: huge }),
+    env,
+  );
+  assert.equal(res.status, 400);
+});
+
+await t('a push with too many operations is refused', async () => {
+  const ops = Array.from({ length: 1001 }, (_, i) => ({
+    op: 'put', collection: 'todos', id: `bulk-${i}`,
+    data: { title: 't', done: false },
+  }));
+  const res = await handlePush(req('/push', alice, {
+    transactions: [{ id: 'tx', ops }],
+  }), env);
+  assert.equal(res.status, 413);
+});
+
+await t('a push at the limit is still accepted', async () => {
+  const ops = Array.from({ length: 50 }, (_, i) => ({
+    op: 'put', collection: 'todos', id: `ok-${i}`,
+    data: { title: 't', done: false },
+  }));
+  const res = await handlePush(req('/push', alice, {
+    transactions: [{ id: 'tx', ops }],
+  }), env);
+  assert.equal(res.status, 200);
+});
+
+await t('a client hammering a route is rate limited, per user', async () => {
+  const spammer = await tokenFor('spammer');
+  let limited = 0;
+  let ok = 0;
+  for (let i = 0; i < 700; i++) {
+    const res = await handleQuery(req('/query', spammer, {
+      collection: 'todos', limit: 1,
+    }), env);
+    if (res.status === 429) limited++;
+    else if (res.status === 200) ok++;
+  }
+  assert.ok(limited > 0, 'the limiter must eventually say no');
+  assert.ok(ok >= 600, `should allow the budget first, allowed ${ok}`);
+
+  // A different user has their own budget and is unaffected.
+  const other = await tokenFor('unaffected');
+  const res = await handleQuery(req('/query', other, {
+    collection: 'todos', limit: 1,
+  }), env);
+  assert.equal(res.status, 200, 'one user must not exhaust another');
+});
+
+await t('a rate limited response says when to retry', async () => {
+  const spammer2 = await tokenFor('spammer2');
+  let response: Response | null = null;
+  for (let i = 0; i < 400; i++) {
+    const res = await handlePush(req('/push', spammer2, { transactions: [] }), env);
+    if (res.status === 429) { response = res; break; }
+  }
+  assert.ok(response, 'expected to hit the write limit');
+  assert.ok(Number(response!.headers.get('retry-after')) > 0);
+});
+
 // ------------------------------------------------------------- pagination
 
 await t('keyset paging walks every document exactly once', async () => {

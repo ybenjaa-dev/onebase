@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  # A new push supersedes the run in flight for the same ref.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - name: Formatting
+        run: dart format --output=none --set-exit-if-changed .
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+      - name: Example analyzes
+        run: cd example && flutter pub get && flutter analyze
+
+  generated-backend:
+    name: Generated backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: flutter pub get
+      - name: Regenerate from the schema
+        # Proves the committed backend matches what the CLI produces today.
+        run: cd example && dart run ../bin/setup.dart --force
+      - name: No drift between templates and committed output
+        run: git diff --exit-code -- example/
+      - name: Typecheck and build
+        run: cd example/backend && npm install && npx tsc --noEmit && npm run build
+
+  end-to-end:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: flutter pub get
+      - run: cd example && dart run ../bin/setup.dart --force
+      - name: Run against a real MongoDB replica set
+        # mongodb-memory-server downloads and runs a real mongod, so these
+        # exercise transactions, change streams and indexes rather than a mock.
+        run: cd tool/e2e && npm install && npm test
+
+  publishable:
+    name: Publish dry run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter pub publish --dry-run
