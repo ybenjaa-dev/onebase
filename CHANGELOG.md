@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2
+
+Documentation only. No code changes from 0.1.1.
+
 ## 0.1.1
 
 Maintenance release.
