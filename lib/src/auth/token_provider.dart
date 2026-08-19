@@ -1,4 +1,4 @@
-/// Supplies the JWT used for both PowerSync sync and write uploads.
+/// Supplies the JWT the sync engine sends on every backend request.
 ///
 /// mongo_easy is auth-provider-agnostic: wrap whatever issues your JWTs.
 ///
@@ -14,8 +14,8 @@
 /// TokenProvider(() async => myAuthService.jwt);
 /// ```
 ///
-/// Return `null` while the user is signed out — mongo_easy stays offline-only
-/// until a token becomes available.
+/// Return `null` while the user is signed out — mongo_easy keeps working
+/// against local data and starts syncing once a token appears.
 class TokenProvider {
   const TokenProvider(this._fetch);
 

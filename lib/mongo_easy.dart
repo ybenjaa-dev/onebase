@@ -1,11 +1,9 @@
-/// Firebase-like developer experience for MongoDB Atlas in Flutter.
+/// Firebase-like developer experience for MongoDB in Flutter.
 ///
-/// Offline-first reactive collections synced through PowerSync — no backend
-/// code required. Start with [MongoEasy.init], then use
-/// [MongoEasy.collection].
+/// Offline-first reactive collections backed by a local SQLite replica and one
+/// tiny generated backend — no third-party sync service. Start with
+/// [MongoEasy.init], then use [MongoEasy.collection].
 library;
-
-export 'package:powersync/powersync.dart' show SyncStatus;
 
 export 'src/auth/jwt_utils.dart' show JwtClaims, decodeJwt;
 export 'src/auth/token_provider.dart';
@@ -16,3 +14,5 @@ export 'src/client/typed_collection.dart';
 export 'src/errors.dart';
 export 'src/query/query_builder.dart';
 export 'src/schema/schema.dart';
+export 'src/sync/sync_engine.dart' show SyncSkippedWrites;
+export 'src/sync/sync_status.dart';

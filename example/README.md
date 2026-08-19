@@ -1,52 +1,58 @@
-# mongo_easy example — offline-first Todos on MongoDB Atlas
+# mongo_easy example — offline-first todos
 
-A complete Todo app: email login, per-user data, offline mode, and realtime
-sync — with **zero backend code written by hand**.
+A complete Riverpod + hooks app on mongo_easy: email login, per-user todos,
+reactive lists, a live indicator, and writes that work with the network off.
+The `Todo` model and `MongoEasyDb.todos` are generated from
+`mongo_easy.yaml` — there is no hand-written model in this app.
 
 ## Run it
 
-1. **Generate + deploy the backend** (from this directory):
+1. **Generate models and backend**
 
    ```bash
-   dart run mongo_easy:setup            # already generated into this folder
-   cd backend/vercel && npm install && npx vercel deploy --prod
+   dart run ../bin/setup.dart
    ```
 
-   Follow the printed checklist: create a free MongoDB Atlas cluster and a
-   free PowerSync instance, paste `powersync/sync-streams.yaml`, configure
-   the shared HS256 dev secret on both sides.
-
-2. **Point the app at your deployment** — edit `lib/config.dart`:
-
-   ```dart
-   static const powersyncUrl = 'https://<instance>.powersync.journeyapps.com';
-   static const uploadUrl    = 'https://<project>.vercel.app/api/upload';
-   static const tokenUrl     = 'https://<project>.vercel.app/api/token';
-   ```
-
-3. **Add platforms and run:**
+2. **Configure and start the backend**
 
    ```bash
-   flutter create . --platforms=ios,android,macos
-   flutter run
+   cd backend
+   cp .env.example .env      # MONGO_URI, MONGO_DB, AUTH_MODE=dev, JWT_SECRET
+   npm install && npm run dev
    ```
 
-   On macOS, add the outgoing-network entitlement to both
-   `macos/Runner/DebugProfile.entitlements` and `Release.entitlements`:
+   Any MongoDB with a replica set works — a free Atlas M0 included.
 
-   ```xml
-   <key>com.apple.security.network.client</key>
-   <true/>
+3. **Run the app**
+
+   ```bash
+   flutter run --dart-define=API_URL=http://localhost:3000
    ```
+
+   On an Android emulator use `http://10.0.2.2:3000`. Add
+   `--dart-define=ONLINE=true` to run it as a thin online client with no local
+   database.
 
 ## What to try
 
-- Sign in with any email (dev-token auth — see the security notes in the
-  main README before shipping).
-- Add todos, toggle, swipe to delete — everything is instant (local SQLite).
-- Turn on airplane mode, keep editing, reconnect: changes upload
-  automatically (watch the sync banner).
-- Run the app on two devices with the same email: edits appear on both in
-  realtime.
-- Sign in with a different email: you get an empty list — isolation is
-  enforced by PowerSync Sync Streams on the server, not by the client.
+- Add a todo, then turn off Wi-Fi and add more: they appear instantly and the
+  banner shows how many are waiting to upload.
+- Open the app on a second device with the same email and edit something —
+  it appears on the first device immediately. The banner reads **Live** while
+  the realtime channel is connected.
+- Sign in with a different email: the list is empty. Isolation is enforced by
+  the backend from the JWT, not the client — a patched app cannot see another
+  user's rows.
+- Run with `--dart-define=ONLINE=true` and compare: same UI, same code, no
+  local database, and nothing works offline.
+
+## Checking the setup
+
+```bash
+dart run ../bin/setup.dart --doctor --api-url http://localhost:3000
+```
+
+## Backend end-to-end tests
+
+`tool/e2e` runs the generated backend against a real in-memory MongoDB replica
+set. See `tool/e2e/README.md`.

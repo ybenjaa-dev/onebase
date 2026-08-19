@@ -1,25 +1,20 @@
-/// Fill these in after running `dart run mongo_easy:setup` and deploying the
-/// generated backend (see backend/vercel/README.md) — or override at run
-/// time with --dart-define=POWERSYNC_URL=... etc. (used by the local E2E
-/// harness in tool/local_e2e).
+/// Fill this in after running `dart run mongo_easy:setup` and deploying the
+/// generated backend (see backend/README.md) — or override at run time with
+/// --dart-define=API_URL=... (used by the local E2E harness in
+/// tool/local_e2e).
 abstract final class AppConfig {
-  /// Your PowerSync instance URL (PowerSync Dashboard → instance).
-  static const powersyncUrl = String.fromEnvironment(
-    'POWERSYNC_URL',
-    defaultValue: 'https://YOUR-INSTANCE.powersync.journeyapps.com',
-  );
-
-  /// The deployed write-upload endpoint.
-  static const uploadUrl = String.fromEnvironment(
-    'UPLOAD_URL',
-    defaultValue: 'https://YOUR-PROJECT.vercel.app/api/upload',
+  /// Root URL of your deployed mongo_easy backend, without a trailing slash.
+  static const apiUrl = String.fromEnvironment(
+    'API_URL',
+    defaultValue: 'https://YOUR-PROJECT.example.com',
   );
 
   /// The dev-only token endpoint (email login without an auth provider).
-  static const tokenUrl = String.fromEnvironment(
-    'TOKEN_URL',
-    defaultValue: 'https://YOUR-PROJECT.vercel.app/api/token',
-  );
+  static String get tokenUrl => '$apiUrl/token';
 
-  static bool get isConfigured => !powersyncUrl.contains('YOUR-INSTANCE');
+  /// Run the app as a thin online client:
+  /// `flutter run --dart-define=ONLINE=true`
+  static const online = bool.fromEnvironment('ONLINE');
+
+  static bool get isConfigured => !apiUrl.contains('YOUR-PROJECT');
 }

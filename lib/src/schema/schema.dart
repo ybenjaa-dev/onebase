@@ -47,7 +47,9 @@ class MongoCollectionSchema {
     required this.fields,
     this.ownerField,
     this.shared = false,
-  }) {
+    this.requiredFields = const {},
+    String? model,
+  }) : model = model ?? modelNameFor(name) {
     if (name.isEmpty) {
       throw const SchemaParseException('Collection name must not be empty.');
     }
@@ -56,6 +58,23 @@ class MongoCollectionSchema {
         'Collection "$name" declares an id field.',
         hint: 'The `id` column is managed automatically — remove it from '
             'the fields.',
+      );
+    }
+    final reserved = fields.keys.where((field) => field.startsWith('_'));
+    if (reserved.isNotEmpty) {
+      throw SchemaParseException(
+        'Collection "$name" declares reserved field(s): '
+        '${reserved.join(', ')}.',
+        hint: 'Names starting with an underscore are managed by mongo_easy '
+            '(for example `_updated_at`). Rename the field.',
+      );
+    }
+    final undeclaredRequired =
+        requiredFields.where((field) => !fields.containsKey(field));
+    if (undeclaredRequired.isNotEmpty) {
+      throw SchemaParseException(
+        'Collection "$name" marks undeclared field(s) as required: '
+        '${undeclaredRequired.join(', ')}.',
       );
     }
     if (ownerField != null && !fields.containsKey(ownerField)) {
@@ -88,6 +107,41 @@ class MongoCollectionSchema {
   /// When true, the collection is synced to all authenticated users instead
   /// of being filtered per user.
   final bool shared;
+
+  /// Fields declared with a trailing `!` in `mongo_easy.yaml`.
+  ///
+  /// They become non-nullable on the generated model and are enforced by the
+  /// backend when a whole document is written.
+  final Set<String> requiredFields;
+
+  /// Name of the generated Dart model class. Defaults to a singularized,
+  /// PascalCase form of [name]; override with `model:` in the YAML.
+  final String model;
+
+  bool isRequired(String field) => requiredFields.contains(field);
+
+  /// `todos` → `Todo`, `categories` → `Category`, `people` → `People`.
+  ///
+  /// Deliberately simple: irregular plurals are not guessed, so set `model:`
+  /// in `mongo_easy.yaml` when the default reads wrong.
+  static String modelNameFor(String collection) {
+    var base = collection;
+    if (base.endsWith('ies') && base.length > 3) {
+      base = '${base.substring(0, base.length - 3)}y';
+    } else if (base.endsWith('sses') ||
+        base.endsWith('shes') ||
+        base.endsWith('ches') ||
+        base.endsWith('xes')) {
+      base = base.substring(0, base.length - 2);
+    } else if (base.endsWith('s') && !base.endsWith('ss')) {
+      base = base.substring(0, base.length - 1);
+    }
+    return base
+        .split(RegExp(r'[_\-\s]+'))
+        .where((part) => part.isNotEmpty)
+        .map((part) => part[0].toUpperCase() + part.substring(1))
+        .join();
+  }
 
   MongoFieldType fieldType(String field) {
     final type = fields[field];

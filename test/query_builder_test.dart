@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mongo_easy/src/errors.dart';
+import 'package:mongo_easy/src/query/local_query_runner.dart';
 import 'package:mongo_easy/src/query/query_builder.dart';
 import 'package:mongo_easy/src/schema/schema.dart';
 
@@ -20,7 +21,7 @@ void main() {
     ownerField: 'owner_id',
   );
 
-  MongoQuery query() => MongoQuery(FakeExecutor(), schema);
+  MongoQuery query() => MongoQuery(LocalQueryRunner(FakeExecutor()), schema);
 
   group('compile', () {
     test('bare query selects everything', () {
@@ -210,7 +211,7 @@ void main() {
             'score': 3,
           },
         ];
-      final results = await MongoQuery(executor, schema)
+      final results = await MongoQuery(LocalQueryRunner(executor), schema)
           .where('done', isEqualTo: true)
           .find();
 
@@ -227,7 +228,8 @@ void main() {
 
     test('findOne returns null on empty result', () async {
       final executor = FakeExecutor();
-      expect(await MongoQuery(executor, schema).findOne(), isNull);
+      expect(await MongoQuery(LocalQueryRunner(executor), schema).findOne(),
+          isNull);
       expect(executor.lastCall.sql, endsWith('LIMIT ?'));
     });
 
@@ -236,7 +238,7 @@ void main() {
         ..rows = [
           {'c': 42}
         ];
-      expect(await MongoQuery(executor, schema).count(), 42);
+      expect(await MongoQuery(LocalQueryRunner(executor), schema).count(), 42);
     });
 
     test('watch decodes every emission', () async {
@@ -244,7 +246,8 @@ void main() {
         ..rows = [
           {'id': 'a', 'done': 0},
         ];
-      final emission = await MongoQuery(executor, schema).watch().first;
+      final emission =
+          await MongoQuery(LocalQueryRunner(executor), schema).watch().first;
       expect(emission.single['done'], false);
     });
   });

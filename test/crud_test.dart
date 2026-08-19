@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mongo_easy/src/client/collection.dart';
 import 'package:mongo_easy/src/errors.dart';
+import 'package:mongo_easy/src/query/local_query_runner.dart';
 import 'package:mongo_easy/src/schema/schema.dart';
 
 import 'fake_executor.dart';
@@ -19,38 +20,43 @@ void main() {
   );
 
   late FakeExecutor executor;
+  late FakeWriter writer;
 
   MongoCollection collection({String userId = 'user-1'}) {
     return MongoCollection(
-      executor,
+      LocalQueryRunner(executor),
+      writer,
       schema,
       currentUserId: () async => userId,
       newId: () => 'generated-id',
     );
   }
 
-  setUp(() => executor = FakeExecutor());
+  setUp(() {
+    executor = FakeExecutor();
+    writer = FakeWriter();
+  });
 
   group('insert', () {
     test('generates an id and returns it', () async {
       final id = await collection().insert({'title': 'milk'});
       expect(id, 'generated-id');
 
-      final call = executor.lastCall;
-      expect(call.sql,
-          'INSERT INTO "todos" (id, "title", "owner_id") VALUES (?, ?, ?)');
-      expect(call.parameters, ['generated-id', 'milk', 'user-1']);
+      final write = writer.lastWrite;
+      expect(write.op, 'put');
+      expect(write.collection, 'todos');
+      expect(write.id, 'generated-id');
+      expect(write.data, {'title': 'milk', 'owner_id': 'user-1'});
     });
 
     test('auto-fills the owner field with the current user', () async {
       await collection(userId: 'alice').insert({'title': 'x'});
-      expect(executor.lastCall.parameters, contains('alice'));
+      expect(writer.lastWrite.data!['owner_id'], 'alice');
     });
 
     test('respects an explicitly provided owner', () async {
       await collection().insert({'title': 'x', 'owner_id': 'custom'});
-      expect(executor.lastCall.parameters, contains('custom'));
-      expect(executor.lastCall.parameters, isNot(contains('user-1')));
+      expect(writer.lastWrite.data!['owner_id'], 'custom');
     });
 
     test('encodes bool, DateTime and json values', () async {
@@ -60,14 +66,13 @@ void main() {
         'due_at': DateTime.utc(2026, 1, 1),
         'meta': {'a': 1},
       });
-      expect(executor.lastCall.parameters, [
-        'generated-id',
-        'x',
-        1,
-        '2026-01-01T00:00:00.000Z',
-        '{"a":1}',
-        'user-1',
-      ]);
+      expect(writer.lastWrite.data, {
+        'title': 'x',
+        'done': 1,
+        'due_at': '2026-01-01T00:00:00.000Z',
+        'meta': '{"a":1}',
+        'owner_id': 'user-1',
+      });
     });
 
     test('rejects fields not in the schema', () {
@@ -81,10 +86,10 @@ void main() {
   group('update', () {
     test('builds a partial SET statement', () async {
       await collection().update('abc', {'done': true, 'title': 'new'});
-      final call = executor.lastCall;
-      expect(
-          call.sql, 'UPDATE "todos" SET "done" = ?, "title" = ? WHERE id = ?');
-      expect(call.parameters, [1, 'new', 'abc']);
+      final write = writer.lastWrite;
+      expect(write.op, 'patch');
+      expect(write.id, 'abc');
+      expect(write.data, {'done': 1, 'title': 'new'});
     });
 
     test('rejects empty changes', () {
@@ -101,9 +106,10 @@ void main() {
   group('delete', () {
     test('deletes by id', () async {
       await collection().delete('abc');
-      final call = executor.lastCall;
-      expect(call.sql, 'DELETE FROM "todos" WHERE id = ?');
-      expect(call.parameters, ['abc']);
+      final write = writer.lastWrite;
+      expect(write.op, 'delete');
+      expect(write.collection, 'todos');
+      expect(write.id, 'abc');
     });
   });
 
@@ -131,8 +137,8 @@ void main() {
       );
 
       await typed.insert(const _Todo(id: 'ignored', title: 'a', done: false));
-      expect(executor.lastCall.sql, isNot(contains('"id" =')));
-      expect(executor.lastCall.parameters.first, 'generated-id');
+      expect(writer.lastWrite.id, 'generated-id');
+      expect(writer.lastWrite.data, isNot(contains('id')));
 
       executor.rows = [
         {'id': 'abc', 'title': 'a', 'done': 1},
@@ -163,14 +169,16 @@ void main() {
   group('collection without owner (shared)', () {
     test('insert does not require a user', () async {
       final shared = MongoCollection(
-        executor,
+        LocalQueryRunner(executor),
+        writer,
         MongoCollectionSchema('tags',
             fields: {'name': MongoFieldType.text}, shared: true),
         currentUserId: () async => throw StateError('must not be called'),
         newId: () => 'id-1',
       );
       await shared.insert({'name': 'work'});
-      expect(executor.lastCall.parameters, ['id-1', 'work']);
+      expect(writer.lastWrite.id, 'id-1');
+      expect(writer.lastWrite.data, {'name': 'work'});
     });
   });
 }

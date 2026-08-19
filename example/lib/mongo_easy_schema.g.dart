@@ -10,8 +10,196 @@ final mongoEasySchema = MongoEasySchema([
       'title': MongoFieldType.text,
       'done': MongoFieldType.bool,
       'created_at': MongoFieldType.datetime,
+      'priority': MongoFieldType.int,
+      'meta': MongoFieldType.json,
       'owner_id': MongoFieldType.text,
     },
     ownerField: 'owner_id',
+    requiredFields: {'title', 'done'},
+    model: 'Todo',
+  ),
+  MongoCollectionSchema(
+    'categories',
+    fields: {
+      'name': MongoFieldType.text,
+      'color': MongoFieldType.text,
+    },
+    shared: true,
+    requiredFields: {'name'},
+    model: 'Category',
   ),
 ]);
+
+/// Typed collections, ready to use:
+///
+/// ```dart
+/// final todos = await MongoEasyDb.todos.find();
+/// ```
+abstract final class MongoEasyDb {
+  static TypedCollection<Todo> get todos =>
+      MongoEasy.collection('todos').withConverter<Todo>(
+        fromJson: Todo.fromJson,
+        toJson: (value) => value.toJson(),
+      );
+
+  static TypedCollection<Category> get categories =>
+      MongoEasy.collection('categories').withConverter<Category>(
+        fromJson: Category.fromJson,
+        toJson: (value) => value.toJson(),
+      );
+}
+
+/// A document in `todos`.
+class Todo {
+  const Todo({
+    this.id = '',
+    required this.title,
+    required this.done,
+    this.createdAt,
+    this.priority,
+    this.meta,
+    this.ownerId,
+  });
+
+  /// Empty until the document has been inserted — mongo_easy
+  /// assigns the id and `insert` returns it.
+  final String id;
+  final String title;
+  final bool done;
+  final DateTime? createdAt;
+  final int? priority;
+
+  /// A json field: a `Map` or `List`, depending on what
+  /// you store. Cast it where you use it.
+  final Object? meta;
+  final String? ownerId;
+
+  factory Todo.fromJson(Map<String, Object?> json) {
+    return Todo(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? _missing('title'),
+      done: json['done'] as bool? ?? _missing('done'),
+      createdAt: json['created_at'] as DateTime?,
+      priority: json['priority'] as int?,
+      meta: json['meta'],
+      ownerId: json['owner_id'] as String?,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+        if (id.isNotEmpty) 'id': id,
+        'title': title,
+        'done': done,
+        if (createdAt != null) 'created_at': createdAt,
+        if (priority != null) 'priority': priority,
+        if (meta != null) 'meta': meta,
+        if (ownerId != null) 'owner_id': ownerId,
+      };
+
+  /// Returns a copy with the given fields replaced. Passing
+  /// null leaves a field unchanged.
+  Todo copyWith({
+    String? id,
+    String? title,
+    bool? done,
+    DateTime? createdAt,
+    int? priority,
+    Object? meta,
+    String? ownerId,
+  }) {
+    return Todo(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      done: done ?? this.done,
+      createdAt: createdAt ?? this.createdAt,
+      priority: priority ?? this.priority,
+      meta: meta ?? this.meta,
+      ownerId: ownerId ?? this.ownerId,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Todo &&
+          id == other.id &&
+          title == other.title &&
+          done == other.done &&
+          createdAt == other.createdAt &&
+          priority == other.priority &&
+          meta == other.meta &&
+          ownerId == other.ownerId;
+
+  @override
+  int get hashCode =>
+      Object.hashAll([id, title, done, createdAt, priority, meta, ownerId]);
+
+  @override
+  String toString() => 'Todo(${toJson()})';
+}
+
+/// A document in `categories`.
+class Category {
+  const Category({
+    this.id = '',
+    required this.name,
+    this.color,
+  });
+
+  /// Empty until the document has been inserted — mongo_easy
+  /// assigns the id and `insert` returns it.
+  final String id;
+  final String name;
+  final String? color;
+
+  factory Category.fromJson(Map<String, Object?> json) {
+    return Category(
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? _missing('name'),
+      color: json['color'] as String?,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+        if (id.isNotEmpty) 'id': id,
+        'name': name,
+        if (color != null) 'color': color,
+      };
+
+  /// Returns a copy with the given fields replaced. Passing
+  /// null leaves a field unchanged.
+  Category copyWith({
+    String? id,
+    String? name,
+    String? color,
+  }) {
+    return Category(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      color: color ?? this.color,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Category &&
+          id == other.id &&
+          name == other.name &&
+          color == other.color;
+
+  @override
+  int get hashCode => Object.hashAll([id, name, color]);
+
+  @override
+  String toString() => 'Category(${toJson()})';
+}
+
+/// Thrown when a document is missing a field the schema marks required.
+Never _missing(String field) {
+  throw StateError(
+    'mongo_easy: document is missing required field "$field". '
+    'Either make it optional in mongo_easy.yaml (drop the trailing !) '
+    'or backfill the existing documents.',
+  );
+}

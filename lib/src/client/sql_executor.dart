@@ -1,6 +1,6 @@
 /// Minimal SQL surface mongo_easy needs from the local database.
 ///
-/// Implemented by the PowerSync adapter in production and by fakes in tests.
+/// Implemented by the SQLite adapter in production and by fakes in tests.
 abstract interface class SqlExecutor {
   Future<List<Map<String, Object?>>> getAll(String sql,
       [List<Object?> parameters]);

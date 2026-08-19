@@ -1,11 +1,23 @@
-# Schema for the example Todo app. Regenerate artifacts with:
-#   dart run mongo_easy:setup
+# mongo_easy schema — the single source of truth for your collections.
+# After editing, re-run:  dart run mongo_easy:setup
+#
+# Field types: text, int, double, bool, datetime, json
+# A trailing `!` marks a field required: non-nullable on the generated model
+# and enforced by the backend.
 
 collections:
   todos:
     owner_field: owner_id
     fields:
-      title: text
-      done: bool
+      title: text!
+      done: bool!
       created_at: datetime
+      priority: int
+      meta: json
       owner_id: text
+
+  categories:
+    shared: true
+    fields:
+      name: text!
+      color: text

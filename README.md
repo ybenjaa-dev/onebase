@@ -1,36 +1,36 @@
 # mongo_easy
 
-**Firebase-like developer experience for MongoDB Atlas in Flutter.**
-Offline-first, realtime, per-user data — without writing a backend.
+**Firebase-like developer experience for MongoDB in Flutter.**
+Offline-first, reactive, per-user data — one package, one tiny backend.
 
 MongoDB retired Realm, Atlas Device Sync and the Data API (EOL September 30,
 2025), leaving Flutter developers without an official "no backend" path to
-MongoDB. `mongo_easy` fills that gap: a Firestore-style API on top of the
-[PowerSync](https://www.powersync.com) sync engine, which officially supports
-MongoDB as a source database, plus a CLI that generates every piece of
-configuration and server code you need.
+MongoDB. `mongo_easy` fills that gap: a Firestore-style API over a local
+SQLite replica, a sync engine built into the package, and a CLI that
+generates the one small server that stands between your app and MongoDB.
+
+No third-party sync service. No vendor account. Nothing to keep running
+except your database and one container.
 
 ```dart
 await MongoEasy.init(MongoEasyConfig(
-  powersyncUrl: 'https://<instance>.powersync.journeyapps.com',
-  uploadUrl: 'https://<project>.vercel.app/api/upload',
+  apiUrl: 'https://your-backend.example.com',
   tokenProvider: TokenProvider(() async => myAuth.currentJwt),
   schema: mongoEasySchema, // generated
 ));
 
-final todos = MongoEasy.collection('todos');
-
-// Reactive UI — like Firestore snapshots:
-Stream<List<Map<String, Object?>>> live = todos
+// Typed collections and models are generated from your YAML — no
+// hand-written model class, no converter wiring.
+Stream<List<Todo>> live = MongoEasyDb.todos
     .where('done', isEqualTo: false)
     .orderBy('created_at', descending: true)
     .limit(50)
     .watch();
 
 // Offline-first writes — instant locally, synced in the background:
-final id = await todos.insert({'title': 'Ship it'});
-await todos.update(id, {'done': true});
-await todos.delete(id);
+final id = await MongoEasyDb.todos.insert(Todo(title: 'Ship it', done: false));
+await MongoEasyDb.todos.update(id, {'done': true});
+await MongoEasyDb.todos.delete(id);
 ```
 
 ## How it works
@@ -38,23 +38,51 @@ await todos.delete(id);
 ```mermaid
 flowchart LR
     subgraph Device
-        A[Flutter app<br/>mongo_easy API] --> B[(Local SQLite<br/>offline-first)]
+        A[Flutter app<br/>typed collections] --> B[(Local SQLite<br/>replica + outbox)]
+        B <--> S[Sync engine<br/>push then pull]
     end
-    B <-->|"sync (reads)<br/>JWT-authenticated"| C[PowerSync Service<br/>Sync Streams filter<br/>per user]
-    B -->|"writes (upload queue)<br/>same JWT"| D[Generated upload endpoint<br/>Vercel / Supabase / Cloudflare]
-    C <-->|change streams| E[(MongoDB Atlas)]
-    D -->|verified writes| E
+    S -->|"POST /push"| D[Your backend<br/>Node or Docker, anywhere]
+    S <-->|"POST /pull"| D
+    D ==>|"GET /stream (SSE)<br/>change streams"| S
+    D <--> E[(MongoDB)]
 ```
 
-- **Reads**: PowerSync replicates the MongoDB documents each user is allowed
-  to see (via server-side Sync Streams) into a local SQLite database. Queries
-  and `watch()` streams run against that replica — instant, and fully
-  functional offline.
-- **Writes**: go to SQLite first, queue locally, and upload in the background
-  to a small serverless endpoint that `mongo_easy` **generates for you** —
-  it verifies the user's JWT and applies the changes to MongoDB.
-- **No credentials in the app**: the client only ever knows your PowerSync
-  URL, your upload endpoint URL, and the signed-in user's JWT.
+- **Reads** never touch the network. Queries and `watch()` streams run
+  against the local SQLite replica — instant, and fully functional offline.
+- **Writes** apply locally first and land in an outbox. The sync engine
+  uploads them to `/push`, retrying with backoff; nothing is lost if the app
+  is killed mid-flight.
+- **Sync** pushes before it pulls, so a fresh local write is never clobbered
+  by a stale server snapshot. Pending writes are replayed on top of each
+  incoming snapshot, so optimistic UI state survives until the server
+  confirms it.
+- **Realtime** is a live Server-Sent Events channel fed by MongoDB change
+  streams. A change reaches other devices in milliseconds, not on a poll.
+  The periodic sync stays on as the safety net, so a dropped stream degrades
+  to polling instead of breaking.
+- **No credentials in the app.** The client knows one URL and the signed-in
+  user's JWT. MongoDB is reachable only from your backend.
+
+## Offline or online — one line
+
+```dart
+MongoEasyConfig(
+  mode: MongoEasyMode.offline,  // default: local replica, works with no network
+  // mode: MongoEasyMode.online, // thin client: every read and write hits the backend
+  realtime: true,                // live changes in either mode
+  realtimeCollections: {'todos'}, // optional: subscribe to part of the schema
+)
+```
+
+| | `offline` (default) | `online` |
+|---|---|---|
+| Reads | local SQLite, instant | one round trip |
+| Works with no network | yes, reads and writes | no |
+| Writes | queued, retried, survive a restart | sent immediately, throw on failure |
+| `watch()` | local change detection | realtime push, polling fallback |
+| Storage on device | a few MB | none |
+
+Your app code is identical in both. Switching is one line.
 
 ## Quickstart (~10 minutes)
 
@@ -62,8 +90,7 @@ flowchart LR
 
 ```yaml
 dependencies:
-  mongo_easy: ^0.1.0
-  sqlite3_flutter_libs: ^0.6.0+eol
+  mongo_easy: ^0.3.0
 ```
 
 **2. Describe your data** — create `mongo_easy.yaml`:
@@ -87,6 +114,10 @@ Field types: `text`, `int`, `double`, `bool`, `datetime`, `json`
 (`json` fields hold nested documents/arrays and are queryable with
 dot-paths: `where('address.city', isEqualTo: 'Rabat')`).
 
+A trailing `!` marks a field **required** — non-nullable on the generated
+model, and enforced by the backend on every whole-document write. Add
+`model: Todo` to a collection to override the generated class name.
+
 **3. Generate everything**
 
 ```bash
@@ -95,52 +126,22 @@ dart run mongo_easy:setup
 
 This writes:
 
-| File | What it is |
+| Path | What it is |
 |---|---|
-| `powersync/sync-streams.yaml` | Server-side sync rules — paste into PowerSync |
-| `lib/mongo_easy_schema.g.dart` | The Dart schema for `MongoEasy.init` |
-| `backend/<target>/…` | A ready-to-deploy upload endpoint (Vercel, Supabase Edge Functions, or Cloudflare Workers) |
+| `lib/mongo_easy_schema.g.dart` | Typed models (`Todo`), typed collections (`MongoEasyDb.todos`), and the runtime schema |
+| `backend/` | Your server: five routes, a Dockerfile, and a Vercel adapter |
 
-…and prints a checklist: create a free [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
-cluster (M0 works) and a free [PowerSync Cloud](https://accounts.journeyapps.com/portal/powersync-signup)
-instance, connect them, paste the sync streams, deploy the backend with one
-command (`npx vercel deploy --prod`).
-
-### Or skip the checklist: one-command setup
-
-**Managed (`--auto`)** — provide your MongoDB connection string; the CLI
-provisions everything else on free tiers:
+**4. Run the backend anywhere**
 
 ```bash
-export PS_ADMIN_TOKEN=<PowerSync Dashboard → Account Settings → token>
-npx vercel login          # once
-dart run mongo_easy:setup --auto --mongo-uri "mongodb+srv://user:pass@cluster.mongodb.net/mydb"
+cd backend
+cp .env.example .env     # MONGO_URI, MONGO_DB, AUTH_MODE
+docker build -t my-backend . && docker run -p 3000:3000 --env-file .env my-backend
 ```
 
-It creates the PowerSync Cloud instance connected to your cluster, deploys
-the sync streams, configures a shared dev-auth secret on both sides, deploys
-the backend to Vercel with all env vars, and writes the resulting URLs into
-`lib/mongo_easy_endpoints.g.dart` — nothing to copy-paste:
-
-```dart
-await MongoEasy.init(MongoEasyConfig(
-  powersyncUrl: MongoEasyEndpoints.powersyncUrl,
-  uploadUrl: MongoEasyEndpoints.uploadUrl,
-  ...
-));
-```
-
-**Self-hosted (`--self-host`)** — no third-party accounts at all; you run
-the backend wherever Docker runs:
-
-```bash
-dart run mongo_easy:setup --self-host --mongo-uri "mongodb+srv://..."
-cd deploy/self-host && docker compose up -d
-```
-
-This generates a docker-compose bundling the (source-available) PowerSync
-service and your upload backend, wired to your MongoDB. Works against any
-MongoDB 6.0+ replica set — including Atlas free M0.
+Or `npm run dev` locally, or `npx vercel deploy --prod` — the adapter is
+already wired. Any MongoDB with a replica set works, including a free Atlas
+M0 cluster.
 
 **4. Initialize and build UI** — see the [example app](example/) for a
 complete Todo app with login, offline banner and realtime sync.
@@ -165,9 +166,17 @@ TokenProvider(() => auth0.credentialsManager.credentials()
 // HS256 JWTs for any email — zero third-party accounts to start.
 ```
 
-Configure the matching verification in two places (the CLI walks you
-through it): your PowerSync instance (Client Auth) and the generated
-backend (`AUTH_MODE=jwks` + `JWKS_URL`, or `AUTH_MODE=dev` + `JWT_SECRET`).
+The backend's `AUTH_MODE` decides how those tokens are verified. It has
+**no default** — the server refuses to start until you pick one:
+
+| `AUTH_MODE` | Verification | `/token` endpoint | Use for |
+|---|---|---|---|
+| `jwks` | `JWKS_URL` + required `JWT_AUDIENCE` | disabled | production with Supabase/Firebase/Auth0 |
+| `hs256` | shared `JWT_SECRET` (32+ chars) | disabled | production when your own service signs tokens |
+| `dev` | shared `JWT_SECRET` (32+ chars) | **enabled** | the quickstart, never real users |
+
+`JWT_ISSUER` is optional in every mode; set it whenever your provider
+publishes an `iss` claim.
 
 Call `MongoEasy.instance.refreshToken()` after sign-in/out, and
 `MongoEasy.instance.clearLocalData()` on sign-out so the next user can't see
@@ -194,56 +203,100 @@ final String id = await todos.insert(Todo(title: 'Ship it'));
   refuses cross-user updates/deletes, and treats the owner field as
   immutable. A malicious client can't read or write anyone else's documents
   — even with a patched binary.
-- **No database credentials ship in the app.** MongoDB is only reachable by
-  the PowerSync Service and your upload endpoint.
-- **Tokens are verified twice** — by PowerSync (sync) and by the upload
-  endpoint (writes), against the same JWKS/secret.
-- **Dev mode is explicitly not production.** The `/token` endpoint gives a
-  token to anyone who knows an email. It exists so your first sync works in
-  minutes; switch `AUTH_MODE=jwks` before shipping.
-- Upload responses follow the PowerSync contract: validation problems return
-  2xx (reported in `skipped`, logged server-side) so a bad op can never
-  wedge the client's upload queue; only transient failures return 5xx and
-  retry.
+- **No database credentials ship in the app.** MongoDB is reachable only
+  from your backend.
+- **Every route verifies the JWT** — reads and writes alike — with pinned
+  algorithms and, in `jwks` mode, a required audience.
+- **Only declared fields are written.** The upload endpoint projects every
+  incoming document onto the fields in `mongo_easy.yaml` and drops the rest
+  (logging what it dropped). A patched client cannot set a server-managed
+  field like `role` or `credits` just by putting it in the payload.
+- **Writes never clobber server state.** `put` is a `$set` upsert, not a
+  document replace, so fields your backend maintains outside the schema
+  survive a client write.
+- **A batch of ops is atomic.** Uploads run inside a MongoDB transaction
+  (needs a replica set — every Atlas tier qualifies). Against a standalone
+  mongod the backend logs once and falls back to per-op writes; every op is
+  idempotent, so a client retry still converges.
+- **Algorithms are pinned.** HS256 only for shared-secret modes, asymmetric
+  only for `jwks` — a token can't talk the verifier into a weaker algorithm.
+  `jwks` also requires an audience so tokens your provider issued for other
+  applications are rejected.
+- **Dev mode is explicitly not production.** `AUTH_MODE=dev` exposes
+  `/token`, which gives a token to anyone who knows an email. It exists so
+  your first sync works in minutes. There is no default `AUTH_MODE`, so a
+  forgotten env var can never leave it enabled by accident — but if you set
+  it, set it deliberately, and switch to `jwks`/`hs256` before shipping.
+- Validation problems return 2xx (reported in `skipped`, logged server-side)
+  so a bad op can never wedge the upload queue; only transient failures
+  return 5xx and retry.
+- **Deletes leave your collections clean.** They are recorded in
+  `_mongo_easy_tombstones` with a 30-day TTL so other devices learn about
+  them, rather than flagging your documents as deleted forever.
 
 ## vs Firebase
 
-| | Firestore | mongo_easy (MongoDB + PowerSync) |
+| | Firestore | mongo_easy (MongoDB) |
 |---|---|---|
 | Reactive queries | `snapshots()` | `watch()` |
 | Offline-first | Cache-based | Full local SQLite replica |
 | Backend code | None | None written — generated & deployed by CLI |
 | Data model | Proprietary documents | Real MongoDB — use Atlas tooling, aggregation, BI |
 | Queries offline | Limited | Full SQL engine underneath (filters, sorts, json paths) |
-| Per-user security | Client-visible security rules | Server-side sync streams + endpoint checks |
-| Self-hosting | No | Yes (PowerSync is source-available, Mongo is yours) |
-| Free tier | Yes | Yes (Atlas M0 + PowerSync Cloud free + serverless free tiers) |
+| Per-user security | Client-visible security rules | Server-side, from the verified JWT |
+| Self-hosting | No | Yes — your MongoDB, your container |
+| Vendor services | Firebase | None beyond MongoDB itself |
+| Free tier | Yes | Yes (Atlas M0 + any free container host) |
 
-## Limitations (v0.1)
+## Limitations
 
-- Web support follows the `powersync` package's beta status; iOS, Android,
-  macOS, Windows and Linux are first-class.
+- **Conflicts are last-write-wins** by server timestamp. There is no custom
+  merge hook yet; two devices editing the same field means the later push
+  wins.
+- **Realtime needs a long-lived connection.** Container hosts (Fly, Railway,
+  Render, Cloud Run, a VPS) hold it fine. Short-lived serverless functions cut
+  it, and mongo_easy falls back to polling — correct, just not instant.
+- **Offline mode has a ~1s floor** on how quickly another device's change can
+  arrive through `/pull`, because pull deliberately ignores the most recent
+  second (see the sync notes above). Realtime bypasses this; your own writes
+  are always instant.
 - Queries run on synced data only — a device sees its user's documents (plus
   `shared: true` collections), not the whole database.
-- `shared: true` collections are readable and writable by any signed-in
-  user; role-based rules are on the roadmap.
-- No aggregation pipeline on-device; `count()` and SQL-backed filters cover
-  the common cases.
-- Cloudflare Workers target is experimental (the `mongodb` driver relies on
-  `nodejs_compat`); Vercel and Supabase are recommended.
+- `shared: true` collections are readable and writable by any signed-in user;
+  role-based rules are on the roadmap.
+- No aggregation pipeline on-device; `count()` and filters cover the common
+  cases.
+- Removing a field from `mongo_easy.yaml` leaves its column in the local
+  database so a downgrade cannot lose data.
+- File/attachment storage (S3-compatible) is not in this release.
+
+## Diagnosing a project
+
+```bash
+dart run mongo_easy:setup --doctor --api-url https://your-backend.example.com
+```
+
+Checks the things that actually break apps: a schema that drifted from the
+deployed backend, a half-configured `.env`, an unsafe `AUTH_MODE`, and whether
+the backend answers at all. Each finding comes with the command that fixes it.
 
 ## Troubleshooting
 
 Every `MongoEasyException` carries a `hint` with the likely fix. Common ones:
 
 - *"Unknown collection"* — add it to `mongo_easy.yaml`, re-run
-  `dart run mongo_easy:setup`, redeploy the backend, update the sync streams.
+  `dart run mongo_easy:setup`, redeploy the backend.
 - *"Token is not a JWT"* — your `TokenProvider` returned a session object or
   API key instead of the raw JWT string.
-- *Upload returns 401* — the backend's `JWT_SECRET`/`JWKS_URL` doesn't match
-  what signs your tokens (must be the same config as PowerSync Client Auth).
-- *Nothing syncs down* — check the Sync Streams are deployed and that the
-  JWT `aud` matches what PowerSync expects.
+- *Sync returns 401* — the backend's `JWT_SECRET`/`JWKS_URL` doesn't match
+  what signs your tokens. Check `MongoEasy.instance.status.error`.
+- *Nothing syncs down* — run `--doctor --api-url ...`; the usual cause is a
+  backend deployed from an older schema.
+- *Realtime never connects* — check `MongoEasy.instance.isRealtimeConnected`.
+  Serverless hosts cut long connections; deploy the container image if you
+  need instant updates.
+- *Writes never leave the queue* — `status.pendingWrites` stays above zero;
+  the reason is in `status.error`, and the backend logs the refusal.
 
 ## License
 

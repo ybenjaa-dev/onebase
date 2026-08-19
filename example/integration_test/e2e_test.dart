@@ -1,6 +1,9 @@
-// Full-pipeline E2E: real PowerSync protocol + real MongoDB + the generated
-// upload backend (see tool/local_e2e/run.sh). Proves writes round-trip
-// app → SQLite → upload endpoint → MongoDB → PowerSync → back into SQLite.
+// Full-pipeline E2E against a running backend. Proves writes round-trip
+// app → local SQLite → /push → MongoDB → /pull → back into SQLite.
+//
+// Start the backend first (example/backend: `npm run dev`), then:
+//   flutter test integration_test/e2e_test.dart -d macos \
+//     --dart-define=API_URL=http://localhost:3000
 import 'dart:convert';
 import 'dart:io';
 
@@ -51,8 +54,7 @@ void main() {
         '${Directory.systemTemp.createTempSync('mongo_easy_e2e').path}/e2e.db';
     await MongoEasy.init(
       MongoEasyConfig(
-        powersyncUrl: AppConfig.powersyncUrl,
-        uploadUrl: AppConfig.uploadUrl,
+        apiUrl: AppConfig.apiUrl,
         tokenProvider: TokenProvider.static(token),
         schema: mongoEasySchema,
       ),
@@ -121,8 +123,7 @@ void main() {
     final dirA = Directory.systemTemp.createTempSync('mongo_easy_e2e_a');
     await MongoEasy.init(
       MongoEasyConfig(
-        powersyncUrl: AppConfig.powersyncUrl,
-        uploadUrl: AppConfig.uploadUrl,
+        apiUrl: AppConfig.apiUrl,
         tokenProvider: TokenProvider.static(tokenA),
         schema: mongoEasySchema,
       ),
@@ -146,8 +147,7 @@ void main() {
     final dirB = Directory.systemTemp.createTempSync('mongo_easy_e2e_b');
     await MongoEasy.init(
       MongoEasyConfig(
-        powersyncUrl: AppConfig.powersyncUrl,
-        uploadUrl: AppConfig.uploadUrl,
+        apiUrl: AppConfig.apiUrl,
         tokenProvider: TokenProvider.static(tokenB),
         schema: mongoEasySchema,
       ),

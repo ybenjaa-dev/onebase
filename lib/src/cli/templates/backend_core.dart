@@ -4,12 +4,15 @@ import '../../schema/schema.dart';
 
 /// Builds the `COLLECTIONS` TypeScript constant from the schema: the upload
 /// endpoint needs the owner field (per-user enforcement) and the field types
-/// (to convert client values into proper BSON).
+/// (both to convert client values into proper BSON and to reject fields the
+/// schema never declared).
 String buildCollectionsTs(MongoEasySchema schema) {
   final spec = {
     for (final collection in schema.collections.values)
       collection.name: {
         if (collection.ownerField != null) 'ownerField': collection.ownerField,
+        if (collection.requiredFields.isNotEmpty)
+          'required': collection.requiredFields.toList()..sort(),
         'fields': {
           for (final MapEntry(:key, :value) in collection.fields.entries)
             key: value.yamlName,
@@ -19,10 +22,17 @@ String buildCollectionsTs(MongoEasySchema schema) {
   return const JsonEncoder.withIndent('  ').convert(spec);
 }
 
+/// Imports every platform needs from the MongoDB and jose drivers, given a
+/// module specifier prefix (`''` for node resolution, `'npm:'` for Deno).
+String backendImports({required String mongodb, required String jose}) =>
+    "import { MongoClient, ObjectId } from '$mongodb';\n"
+    "import type { ClientSession, Db } from '$mongodb';\n"
+    "import { jwtVerify, createRemoteJWKSet, SignJWT } from '$jose';";
+
 /// Platform-neutral core of the generated backend (Web-standard
 /// Request/Response). Placeholders: `__IMPORTS__`, `__COLLECTIONS__`.
 ///
-/// Response-code contract (required by PowerSync):
+/// Response-code contract the sync engine relies on:
 /// - 2xx even for validation problems (reported in `skipped`) — a permanent
 ///   non-2xx would block the client's upload queue forever;
 /// - 5xx only for transient/infrastructure failures, which clients retry;
@@ -34,6 +44,8 @@ type FieldType = 'text' | 'int' | 'double' | 'bool' | 'datetime' | 'json';
 
 interface CollectionSpec {
   ownerField?: string;
+  /** Fields declared with a trailing `!` in mongo_easy.yaml. */
+  required?: string[];
   fields: Record<string, FieldType>;
 }
 
@@ -46,57 +58,234 @@ interface UploadOp {
   data?: Record<string, unknown>;
 }
 
-interface UploadPayload {
-  transaction_id?: number | null;
-  ops: UploadOp[];
+interface PushPayload {
+  transactions: unknown[];
 }
+
+/** Server-stamped modification time. Doubles as the sync watermark. */
+const UPDATED_AT = '_updated_at';
+
+/**
+ * Deletes are recorded here rather than as a flag on your documents, so your
+ * collections stay clean for anything else that reads them. A TTL index drops
+ * each tombstone after 30 days — a client offline for longer re-syncs from
+ * scratch instead of missing a delete.
+ */
+const TOMBSTONES = '_mongo_easy_tombstones';
+const TOMBSTONE_TTL_SECONDS = 60 * 60 * 24 * 30;
+
+/** Never accepted from a client, never echoed back as a data field. */
+const RESERVED_FIELDS = new Set([UPDATED_AT, '_id', 'id', '_deleted']);
+
+/** Documents per pull page. */
+const PULL_LIMIT = 500;
+
+/** Default and maximum page size for `/query` (online mode). */
+const QUERY_DEFAULT_LIMIT = 100;
+const QUERY_MAX_LIMIT = 500;
+
+/**
+ * Operators `/query` accepts, mapped to MongoDB.
+ *
+ * A closed set on purpose: the client sends a filter that becomes a database
+ * query, so anything not listed here is rejected rather than forwarded. There
+ * is no path by which `$where`, `$function` or an arbitrary operator can
+ * reach MongoDB.
+ */
+const QUERY_OPERATORS: Record<string, string> = {
+  eq: '$eq',
+  ne: '$ne',
+  gt: '$gt',
+  gte: '$gte',
+  lt: '$lt',
+  lte: '$lte',
+  in: '$in',
+};
+
+/** How long a realtime connection is held before the client reconnects. */
+const STREAM_MAX_LIFETIME_MS = 1000 * 60 * 55;
+
+/** Keepalive cadence, to stop proxies closing an idle stream. */
+const STREAM_HEARTBEAT_MS = 25000;
+
+/**
+ * How far behind "now" a pull stops reading.
+ *
+ * `_updated_at` is stamped when a transaction starts, but the document only
+ * becomes visible when it commits. Two concurrent transactions can therefore
+ * commit out of timestamp order, and a pull that read the later one would
+ * advance its watermark past the earlier one before it ever appeared.
+ *
+ * Ignoring the most recent second closes that window: by the time a document
+ * is eligible to be read, every transaction stamped before it has long since
+ * committed or aborted. The cursor can then advance exactly, with no
+ * re-delivery on every sync — the cost is that a change takes up to a second
+ * longer to reach other devices, which is invisible next to the poll
+ * interval.
+ */
+const PULL_SAFETY_MS = 1000;
+
+/**
+ * How incoming JWTs are verified.
+ *
+ * - `jwks`   — asymmetric keys fetched from `JWKS_URL`. The production mode
+ *              for Supabase / Firebase / Auth0 and friends.
+ * - `hs256`  — shared HS256 secret in `JWT_SECRET`, no dev endpoints. Use
+ *              this when your own auth service signs tokens with a secret.
+ * - `dev`    — same verification as `hs256` **plus** the `/token` endpoint,
+ *              which mints a JWT for any email address. Quickstart only.
+ */
+export type AuthMode = 'dev' | 'hs256' | 'jwks';
+
+const AUTH_MODES: readonly AuthMode[] = ['dev', 'hs256', 'jwks'];
+
+/** HS256 only — never let a caller pick the algorithm. */
+const SYMMETRIC_ALGORITHMS = ['HS256'];
+
+/** Asymmetric algorithms accepted in `jwks` mode. */
+const ASYMMETRIC_ALGORITHMS = [
+  'RS256', 'RS384', 'RS512',
+  'PS256', 'PS384', 'PS512',
+  'ES256', 'ES384', 'ES512',
+  'EdDSA',
+];
+
+/** Shortest HS256 secret we accept; below this the secret is brute-forcable. */
+const MIN_SECRET_LENGTH = 32;
 
 export interface Env {
   MONGO_URI: string;
   MONGO_DB: string;
-  /** 'dev' = HS256 shared secret; 'jwks' = asymmetric keys from JWKS_URL. */
-  AUTH_MODE: string;
+  AUTH_MODE: AuthMode;
   JWT_SECRET?: string;
   JWKS_URL?: string;
   JWT_AUDIENCE?: string;
+  JWT_ISSUER?: string;
 }
 
+/**
+ * Reads and validates configuration. Throws on anything that would make the
+ * deployment insecure or silently wrong — a boot failure is far better than
+ * an endpoint that accepts tokens it should not.
+ *
+ * `AUTH_MODE` is deliberately required: defaulting it would mean a forgotten
+ * env var silently exposes the dev token endpoint in production.
+ */
 export function readEnv(get: (key: string) => string | undefined): Env {
   const need = (key: string): string => {
     const value = get(key);
     if (!value) throw new Error(`Missing required env var: ${key}`);
     return value;
   };
-  return {
+
+  const rawAuthMode = get('AUTH_MODE');
+  if (!rawAuthMode) {
+    throw new Error(
+      'Missing required env var: AUTH_MODE. Set it to "jwks" (production, ' +
+        'verifies tokens against JWKS_URL), "hs256" (production, shared ' +
+        'JWT_SECRET), or "dev" (quickstart — also exposes /token, which ' +
+        'signs a JWT for ANY email; never use it for real users).',
+    );
+  }
+  const authMode = rawAuthMode.trim().toLowerCase() as AuthMode;
+  if (!AUTH_MODES.includes(authMode)) {
+    throw new Error(
+      `Invalid AUTH_MODE "${rawAuthMode}" — expected one of ${AUTH_MODES.join(', ')}.`,
+    );
+  }
+
+  const env: Env = {
     MONGO_URI: need('MONGO_URI'),
     MONGO_DB: need('MONGO_DB'),
-    AUTH_MODE: get('AUTH_MODE') ?? 'dev',
+    AUTH_MODE: authMode,
     JWT_SECRET: get('JWT_SECRET'),
     JWKS_URL: get('JWKS_URL'),
     JWT_AUDIENCE: get('JWT_AUDIENCE'),
+    JWT_ISSUER: get('JWT_ISSUER'),
   };
+
+  if (authMode === 'jwks') {
+    if (!env.JWKS_URL) {
+      throw new Error('AUTH_MODE=jwks requires JWKS_URL.');
+    }
+    if (!env.JWKS_URL.startsWith('https://')) {
+      throw new Error('JWKS_URL must be https — keys fetched over http can be tampered with.');
+    }
+    // Without an audience check, any token your provider issued for any other
+    // application would be accepted here.
+    if (!env.JWT_AUDIENCE) {
+      throw new Error(
+        'AUTH_MODE=jwks requires JWT_AUDIENCE so tokens your provider ' +
+          'issued for other applications are rejected.',
+      );
+    }
+  } else {
+    if (!env.JWT_SECRET) {
+      throw new Error(`AUTH_MODE=${authMode} requires JWT_SECRET.`);
+    }
+    if (env.JWT_SECRET.length < MIN_SECRET_LENGTH) {
+      throw new Error(
+        `JWT_SECRET must be at least ${MIN_SECRET_LENGTH} characters ` +
+          `(got ${env.JWT_SECRET.length}).`,
+      );
+    }
+  }
+
+  if (authMode === 'dev') {
+    console.warn(
+      'mongo_easy: AUTH_MODE=dev — the /token endpoint will sign a JWT for ' +
+        'any email address. Switch to AUTH_MODE=jwks (or hs256) before ' +
+        'letting real users near this deployment.',
+    );
+  }
+
+  return env;
 }
 
 export async function verifyToken(token: string, env: Env): Promise<string> {
-  const options = env.JWT_AUDIENCE ? { audience: env.JWT_AUDIENCE } : {};
+  const options: Record<string, unknown> = {};
+  if (env.JWT_AUDIENCE) options.audience = env.JWT_AUDIENCE;
+  if (env.JWT_ISSUER) options.issuer = env.JWT_ISSUER;
+
   let payload;
   if (env.AUTH_MODE === 'jwks') {
     if (!env.JWKS_URL) throw new Error('JWKS_URL is not configured');
-    const jwks = createRemoteJWKSet(new URL(env.JWKS_URL));
-    payload = (await jwtVerify(token, jwks, options)).payload;
+    const jwks = getJwks(env.JWKS_URL);
+    payload = (
+      await jwtVerify(token, jwks, {
+        ...options,
+        algorithms: ASYMMETRIC_ALGORITHMS,
+      })
+    ).payload;
   } else {
     if (!env.JWT_SECRET) throw new Error('JWT_SECRET is not configured');
     const secret = new TextEncoder().encode(env.JWT_SECRET);
-    payload = (await jwtVerify(token, secret, options)).payload;
+    payload = (
+      await jwtVerify(token, secret, {
+        ...options,
+        algorithms: SYMMETRIC_ALGORITHMS,
+      })
+    ).payload;
   }
-  if (!payload.sub) throw new Error('token has no sub claim');
+  if (typeof payload.sub !== 'string' || payload.sub.length === 0) {
+    throw new Error('token has no sub claim');
+  }
   return payload.sub;
 }
 
-function convertValue(value: unknown, type: FieldType | undefined): unknown {
-  if (value === null || value === undefined || type === undefined) {
-    return value ?? null;
+// createRemoteJWKSet caches keys internally; reuse it across requests so warm
+// invocations do not refetch (and do not hammer the auth provider).
+let jwksCache: { url: string; keys: ReturnType<typeof createRemoteJWKSet> } | null = null;
+
+function getJwks(url: string): ReturnType<typeof createRemoteJWKSet> {
+  if (!jwksCache || jwksCache.url !== url) {
+    jwksCache = { url, keys: createRemoteJWKSet(new URL(url)) };
   }
+  return jwksCache.keys;
+}
+
+function convertValue(value: unknown, type: FieldType): unknown {
+  if (value === null || value === undefined) return null;
   switch (type) {
     case 'bool':
       return value === 1 || value === true;
@@ -116,25 +305,47 @@ function convertValue(value: unknown, type: FieldType | undefined): unknown {
   }
 }
 
+interface ConvertedDocument {
+  doc: Record<string, unknown>;
+  /** Client-supplied keys the schema does not declare; dropped, not written. */
+  dropped: string[];
+}
+
+/**
+ * Projects client data onto the declared schema.
+ *
+ * Only fields present in `spec.fields` survive. Anything else — including
+ * `_id`, `id`, and any server-managed field a client might try to smuggle in
+ * (`role`, `is_admin`, `credits`, ...) — is dropped, so an attacker cannot
+ * write columns the schema never exposed.
+ */
 function convertDocument(
   data: Record<string, unknown>,
   spec: CollectionSpec,
-): Record<string, unknown> {
+): ConvertedDocument {
   const doc: Record<string, unknown> = {};
+  const dropped: string[] = [];
   for (const [key, value] of Object.entries(data)) {
-    if (key === '_id' || key === 'id') continue;
-    doc[key] = convertValue(value, spec.fields[key]);
+    const type = spec.fields[key];
+    if (type === undefined) {
+      // Reserved names are managed by the server; anything else is a field
+      // the schema never declared and is reported so it can be added.
+      if (!RESERVED_FIELDS.has(key)) dropped.push(key);
+      continue;
+    }
+    doc[key] = convertValue(value, type);
   }
-  return doc;
+  return { doc, dropped };
 }
 
 // mongo_easy generates UUID string ids; documents created server-side may
-// use ObjectId. Match either representation.
+// use ObjectId. Match either representation. Always an `$in` so the filter
+// never contributes a derived `_id` to an upsert (which would conflict with
+// `$setOnInsert`).
 function idFilter(id: string): Record<string, unknown> {
-  if (/^[0-9a-f]{24}$/.test(id)) {
-    return { _id: { $in: [id, new ObjectId(id)] } };
-  }
-  return { _id: id };
+  return /^[0-9a-f]{24}$/.test(id)
+    ? { _id: { $in: [id, new ObjectId(id)] } }
+    : { _id: { $in: [id] } };
 }
 
 function idValue(id: string): string | ObjectId {
@@ -147,6 +358,18 @@ interface SkippedOp {
   reason: string;
 }
 
+interface DroppedFields {
+  id: string;
+  collection: string;
+  fields: string[];
+}
+
+interface ApplyResult {
+  applied: number;
+  skipped: SkippedOp[];
+  dropped: DroppedFields[];
+}
+
 function isDuplicateKeyError(error: unknown): boolean {
   return (
     typeof error === 'object' &&
@@ -156,16 +379,59 @@ function isDuplicateKeyError(error: unknown): boolean {
   );
 }
 
-async function applyOps(
-  client: MongoClient,
-  dbName: string,
-  userId: string,
-  ops: UploadOp[],
-): Promise<SkippedOp[]> {
-  const db = client.db(dbName);
-  const skipped: SkippedOp[] = [];
+/** True when the MongoDB deployment cannot run multi-document transactions. */
+function isTransactionUnsupportedError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const code = (error as { code?: number }).code;
+  const message = String((error as { message?: string }).message ?? '');
+  return (
+    code === 20 ||
+    code === 263 ||
+    /transaction numbers are only allowed/i.test(message) ||
+    /transactions are not supported/i.test(message) ||
+    /replica set/i.test(message)
+  );
+}
 
-  for (const op of ops) {
+/** Rejects malformed ops before they reach MongoDB. */
+function parseOp(raw: unknown): UploadOp | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const { op, collection, id, data } = raw as Record<string, unknown>;
+  if (op !== 'put' && op !== 'patch' && op !== 'delete') return null;
+  if (typeof collection !== 'string' || collection.length === 0) return null;
+  if (typeof id !== 'string' || id.length === 0) return null;
+  if (data !== undefined && (typeof data !== 'object' || data === null || Array.isArray(data))) {
+    return null;
+  }
+  return { op, collection, id, data: data as Record<string, unknown> | undefined };
+}
+
+function tombstoneId(collection: string, id: string): string {
+  return `${collection}:${id}`;
+}
+
+async function applyOps(
+  db: Db,
+  userId: string,
+  rawOps: unknown[],
+  session: ClientSession | undefined,
+): Promise<ApplyResult> {
+  const skipped: SkippedOp[] = [];
+  const dropped: DroppedFields[] = [];
+  const now = new Date();
+  let applied = 0;
+
+  for (const raw of rawOps) {
+    const op = parseOp(raw);
+    if (!op) {
+      skipped.push({
+        id: '',
+        collection: '',
+        reason: 'malformed op — expected {op, collection, id, data?}',
+      });
+      continue;
+    }
+
     const spec = COLLECTIONS[op.collection];
     if (!spec) {
       skipped.push({
@@ -184,38 +450,111 @@ async function applyOps(
 
     try {
       if (op.op === 'put') {
-        const doc = convertDocument(op.data ?? {}, spec);
-        if (owner) doc[owner] = userId; // ownership is server-assigned
-        const replaced = await collection.replaceOne(scopedFilter, doc);
-        if (replaced.matchedCount === 0) {
-          await collection.insertOne({ _id: idValue(op.id), ...doc } as never);
+        const { doc, dropped: unknownFields } = convertDocument(op.data ?? {}, spec);
+        if (unknownFields.length > 0) {
+          dropped.push({ id: op.id, collection: op.collection, fields: unknownFields });
         }
-      } else if (op.op === 'patch') {
-        const changes = convertDocument(op.data ?? {}, spec);
-        if (owner) delete changes[owner]; // ownership is immutable
-        if (Object.keys(changes).length === 0) continue;
-        const updated = await collection.updateOne(scopedFilter, {
-          $set: changes,
+        if (owner) doc[owner] = userId; // ownership is server-assigned
+
+        // A whole-document write must carry every required field; a partial
+        // update (patch) is exempt, since it only touches what it names.
+        const missing = (spec.required ?? []).filter(
+          (field) => doc[field] === undefined || doc[field] === null,
+        );
+        if (missing.length > 0) {
+          skipped.push({
+            id: op.id,
+            collection: op.collection,
+            reason: `missing required field(s): ${missing.join(', ')}`,
+          });
+          continue;
+        }
+
+        if (owner) {
+          // Pre-check so a foreign-owned id is reported rather than raising a
+          // duplicate-key error, which would abort the surrounding transaction.
+          const existing = await collection.findOne(idFilter(op.id), {
+            projection: { [owner]: 1 },
+            session,
+          });
+          if (existing && existing[owner] !== userId) {
+            skipped.push({
+              id: op.id,
+              collection: op.collection,
+              reason: 'id already exists and is owned by another user',
+            });
+            continue;
+          }
+        }
+
+        // $set (not replaceOne): fields the schema does not declare are
+        // server-managed and must survive a client write.
+        doc[UPDATED_AT] = now;
+        const update: Record<string, unknown> = {
+          $set: doc,
+          $setOnInsert: { _id: idValue(op.id) },
+        };
+        await collection.updateOne(scopedFilter, update, {
+          upsert: true,
+          session,
         });
+        // A re-created document must not stay hidden behind its tombstone.
+        await db.collection(TOMBSTONES).deleteOne(
+          { _id: tombstoneId(op.collection, op.id) } as never,
+          { session },
+        );
+        applied++;
+      } else if (op.op === 'patch') {
+        const { doc: changes, dropped: unknownFields } = convertDocument(op.data ?? {}, spec);
+        if (unknownFields.length > 0) {
+          dropped.push({ id: op.id, collection: op.collection, fields: unknownFields });
+        }
+        if (owner) delete changes[owner]; // ownership is immutable
+        if (Object.keys(changes).length === 0) {
+          applied++;
+          continue;
+        }
+        changes[UPDATED_AT] = now;
+        const updated = await collection.updateOne(
+          scopedFilter,
+          { $set: changes },
+          { session },
+        );
         if (updated.matchedCount === 0) {
           skipped.push({
             id: op.id,
             collection: op.collection,
             reason: 'not found or not owned by this user',
           });
+        } else {
+          applied++;
         }
-      } else if (op.op === 'delete') {
-        const deleted = await collection.deleteOne(scopedFilter);
+      } else {
+        const deleted = await collection.deleteOne(scopedFilter, { session });
         if (deleted.deletedCount === 0) {
           skipped.push({
             id: op.id,
             collection: op.collection,
             reason: 'not found or not owned by this user',
           });
+        } else {
+          // Record the delete so other devices learn about it on their next
+          // pull. Without this a deleted row would linger on them forever.
+          await db.collection(TOMBSTONES).replaceOne(
+            { _id: tombstoneId(op.collection, op.id) } as never,
+            {
+              collection: op.collection,
+              doc_id: op.id,
+              owner: owner ? userId : null,
+              deleted_at: now,
+            },
+            { upsert: true, session },
+          );
+          applied++;
         }
       }
     } catch (error) {
-      if (isDuplicateKeyError(error)) {
+      if (isDuplicateKeyError(error) && !session) {
         skipped.push({
           id: op.id,
           collection: op.collection,
@@ -227,15 +566,55 @@ async function applyOps(
     }
   }
 
-  return skipped;
+  return { applied, skipped, dropped };
 }
 
-let mongoClient: MongoClient | null = null;
+// Multi-document transactions need a replica set (every Atlas tier, including
+// free M0). Standalone mongod does not support them; we detect that once and
+// fall back. The fallback is safe because every op is idempotent — a client
+// retry of the same transaction converges to the same state.
+let transactionsSupported = true;
+
+async function applyUpload(
+  client: MongoClient,
+  dbName: string,
+  userId: string,
+  rawOps: unknown[],
+): Promise<ApplyResult> {
+  if (transactionsSupported) {
+    const session = client.startSession();
+    try {
+      let result: ApplyResult | null = null;
+      await session.withTransaction(async () => {
+        result = await applyOps(client.db(dbName), userId, rawOps, session);
+      });
+      if (result) return result;
+    } catch (error) {
+      if (!isTransactionUnsupportedError(error)) throw error;
+      transactionsSupported = false;
+      console.warn(
+        'mongo_easy: this MongoDB deployment does not support transactions ' +
+          '(needs a replica set). Falling back to per-operation writes.',
+      );
+    } finally {
+      await session.endSession();
+    }
+  }
+  return applyOps(client.db(dbName), userId, rawOps, undefined);
+}
+
+let mongoClient: Promise<MongoClient> | null = null;
 
 async function getMongo(env: Env): Promise<MongoClient> {
   if (!mongoClient) {
-    mongoClient = new MongoClient(env.MONGO_URI);
-    await mongoClient.connect();
+    // Cache the promise, not the client, so concurrent invocations share one
+    // connect(); clear it on failure so the next request retries.
+    mongoClient = new MongoClient(env.MONGO_URI)
+      .connect()
+      .catch((error: unknown) => {
+        mongoClient = null;
+        throw error;
+      });
   }
   return mongoClient;
 }
@@ -247,56 +626,549 @@ export function json(status: number, body: unknown): Response {
   });
 }
 
-export async function handleUpload(
+/** Shared auth guard: returns the verified user id, or a 401 Response. */
+async function authenticate(
+  request: Request,
+  env: Env,
+  method: string = 'POST',
+): Promise<{ userId: string } | { response: Response }> {
+  if (request.method !== method) {
+    return { response: json(405, { error: 'method not allowed' }) };
+  }
+  const authorization = request.headers.get('authorization') ?? '';
+  if (!authorization.startsWith('Bearer ')) {
+    return { response: json(401, { error: 'missing bearer token' }) };
+  }
+  try {
+    return { userId: await verifyToken(authorization.slice(7), env) };
+  } catch (error) {
+    // Do not echo the verification error: it can leak configuration details.
+    console.warn('mongo_easy: token rejected', error);
+    return { response: json(401, { error: 'invalid token' }) };
+  }
+}
+
+async function readJson(request: Request): Promise<Record<string, unknown> | null> {
+  try {
+    const body = await request.json();
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return null;
+    }
+    return body as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Applies a batch of client writes.
+ *
+ * Body: `{ transactions: [{ id, ops: [{op, collection, id, data}] }] }`.
+ * Ops from every transaction are applied together so a multi-document change
+ * made offline lands atomically.
+ */
+export async function handlePush(
   request: Request,
   env: Env,
 ): Promise<Response> {
-  if (request.method !== 'POST') {
-    return json(405, { error: 'method not allowed' });
+  const auth = await authenticate(request, env);
+  if ('response' in auth) return auth.response;
+
+  const payload = (await readJson(request)) as PushPayload | null;
+  if (!payload || !Array.isArray(payload.transactions)) {
+    return json(400, { error: 'body must contain a transactions array' });
   }
 
-  const authorization = request.headers.get('authorization') ?? '';
-  if (!authorization.startsWith('Bearer ')) {
-    return json(401, { error: 'missing bearer token' });
-  }
-
-  let userId: string;
-  try {
-    userId = await verifyToken(authorization.slice(7), env);
-  } catch (error) {
-    return json(401, { error: `invalid token: ${String(error)}` });
-  }
-
-  let payload: UploadPayload;
-  try {
-    payload = (await request.json()) as UploadPayload;
-  } catch {
-    return json(400, { error: 'body must be JSON' });
-  }
-  if (!Array.isArray(payload.ops)) {
-    return json(400, { error: 'body must contain an ops array' });
+  const ops: unknown[] = [];
+  for (const entry of payload.transactions) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const list = (entry as { ops?: unknown }).ops;
+    if (Array.isArray(list)) ops.push(...list);
   }
 
   try {
     const client = await getMongo(env);
-    const skipped = await applyOps(client, env.MONGO_DB, userId, payload.ops);
-    if (skipped.length > 0) {
-      console.warn('mongo_easy upload: skipped ops', JSON.stringify(skipped));
+    await ensureIndexes(client, env);
+    const result = await applyUpload(client, env.MONGO_DB, auth.userId, ops);
+    if (result.skipped.length > 0) {
+      console.warn('mongo_easy push: skipped ops', JSON.stringify(result.skipped));
+    }
+    if (result.dropped.length > 0) {
+      console.warn(
+        'mongo_easy push: dropped undeclared fields (add them to ' +
+          'mongo_easy.yaml and redeploy if they are meant to sync)',
+        JSON.stringify(result.dropped),
+      );
     }
     // Always 2xx once ops were processed — validation problems are reported,
     // not turned into errors, so the client queue never gets stuck.
-    return json(200, {
-      applied: payload.ops.length - skipped.length,
-      skipped,
-    });
+    return json(200, result);
   } catch (error) {
-    console.error('mongo_easy upload: transient failure', error);
+    console.error('mongo_easy push: transient failure', error);
     return json(503, { error: 'transient failure, client will retry' });
   }
 }
 
+/**
+ * Returns everything in one collection that changed since the client's
+ * watermark — updated documents and deletes, scoped to the caller.
+ *
+ * Body: `{ collection, since? }`. Response: `{ documents, cursor, has_more }`.
+ */
+export async function handlePull(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const auth = await authenticate(request, env);
+  if ('response' in auth) return auth.response;
+
+  const body = await readJson(request);
+  const name = body?.collection;
+  if (typeof name !== 'string' || !COLLECTIONS[name]) {
+    return json(400, { error: 'unknown or missing collection' });
+  }
+  const rawSince = body?.since;
+  if (rawSince !== undefined && typeof rawSince !== 'string') {
+    return json(400, { error: 'since must be an ISO-8601 string' });
+  }
+  const since = rawSince ? new Date(rawSince) : null;
+  if (since && Number.isNaN(since.getTime())) {
+    return json(400, { error: 'since is not a valid date' });
+  }
+
+  const spec = COLLECTIONS[name];
+  const owner = spec.ownerField;
+
+  try {
+    const client = await getMongo(env);
+    await ensureIndexes(client, env);
+    const db = client.db(env.MONGO_DB);
+
+    const readUpTo = new Date(Date.now() - PULL_SAFETY_MS);
+    const window = (field: string): Record<string, unknown> => ({
+      [field]: since ? { $gt: since, $lte: readUpTo } : { $lte: readUpTo },
+    });
+
+    const scope: Record<string, unknown> = owner ? { [owner]: auth.userId } : {};
+
+    const documents = await db
+      .collection(name)
+      .find({ ...scope, ...window(UPDATED_AT) })
+      .sort({ [UPDATED_AT]: 1, _id: 1 })
+      .limit(PULL_LIMIT)
+      .toArray();
+
+    const tombstoneFilter: Record<string, unknown> = { collection: name };
+    if (owner) tombstoneFilter.owner = auth.userId;
+
+    const tombstones = await db
+      .collection(TOMBSTONES)
+      .find({ ...tombstoneFilter, ...window('deleted_at') })
+      .sort({ deleted_at: 1, _id: 1 })
+      .limit(PULL_LIMIT)
+      .toArray();
+
+    const payload = [
+      ...documents.map((document) => projectDocument(document, spec)),
+      ...tombstones.map((tombstone) => ({
+        id: String(tombstone.doc_id),
+        _deleted: true,
+      })),
+    ];
+
+    // When a page is full there is more behind it, so the cursor must stop at
+    // that page's edge rather than at the newest row overall. Rewinding one
+    // millisecond keeps documents that share the edge timestamp from being
+    // cut in half by the page boundary.
+    const docsFull = documents.length === PULL_LIMIT;
+    const tombsFull = tombstones.length === PULL_LIMIT;
+    const lastDocAt = timestampOf(documents[documents.length - 1]?.[UPDATED_AT]);
+    const lastTombAt = timestampOf(tombstones[tombstones.length - 1]?.deleted_at);
+
+    let next: number | null;
+    if (docsFull || tombsFull) {
+      const edges = [
+        docsFull ? lastDocAt : null,
+        tombsFull ? lastTombAt : null,
+      ].filter((value): value is number => value !== null);
+      next = Math.min(...edges) - 1;
+    } else {
+      const seen = [lastDocAt, lastTombAt].filter(
+        (value): value is number => value !== null,
+      );
+      // Nothing new: hold the watermark at the read edge so the next pull
+      // starts from where this one stopped instead of re-scanning history.
+      next = seen.length > 0 ? Math.max(...seen) : readUpTo.getTime();
+    }
+
+    const cursor = new Date(Math.max(0, next)).toISOString();
+
+    return json(200, {
+      documents: payload,
+      cursor,
+      has_more: docsFull || tombsFull,
+    });
+  } catch (error) {
+    console.error('mongo_easy pull: transient failure', error);
+    return json(503, { error: 'transient failure, client will retry' });
+  }
+}
+
+function timestampOf(value: unknown): number | null {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+/**
+ * Shapes a stored document for the client: only declared fields, plus the id.
+ * Anything your backend keeps alongside the schema stays server-side.
+ */
+function projectDocument(
+  document: Record<string, unknown>,
+  spec: CollectionSpec,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { id: String(document._id) };
+  for (const key of Object.keys(spec.fields)) {
+    const value = document[key];
+    if (value === undefined) continue;
+    out[key] =
+      value instanceof Date
+        ? value.toISOString()
+        : spec.fields[key] === 'json' && typeof value === 'object' && value !== null
+          ? JSON.stringify(value)
+          : value;
+  }
+  const updatedAt = document[UPDATED_AT];
+  if (updatedAt instanceof Date) out[UPDATED_AT] = updatedAt.toISOString();
+  return out;
+}
+
+/**
+ * Resolves a client field reference against the schema.
+ *
+ * Returns the MongoDB path, or null when the field is not declared. Dot-paths
+ * are only allowed into a declared `json` field, which is what stops a client
+ * reaching into documents through a path the schema never exposed.
+ */
+function resolveQueryField(field: string, spec: CollectionSpec): string | null {
+  if (typeof field !== 'string' || field.length === 0) return null;
+  if (field.includes('$') || field.startsWith('_')) return null;
+
+  const segments = field.split('.');
+  if (segments.some((segment) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(segment))) {
+    return null;
+  }
+  const root = segments[0];
+  const type = spec.fields[root];
+  if (type === undefined) return null;
+  if (segments.length > 1 && type !== 'json') return null;
+  return field;
+}
+
+function queryValue(field: string, value: unknown, spec: CollectionSpec): unknown {
+  const type = spec.fields[field];
+  // Dot-paths address inside a json document; the stored representation wins.
+  return type === undefined ? value : convertValue(value, type);
+}
+
+/**
+ * Runs a query on behalf of the client — online mode's read path.
+ *
+ * Body: `{ collection, filters?, order?, limit?, offset?, count?, id? }`.
+ * Always scoped to the caller's own documents.
+ */
+export async function handleQuery(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const auth = await authenticate(request, env);
+  if ('response' in auth) return auth.response;
+
+  const body = await readJson(request);
+  const name = body?.collection;
+  if (typeof name !== 'string' || !COLLECTIONS[name]) {
+    return json(400, { error: 'unknown or missing collection' });
+  }
+  const spec = COLLECTIONS[name];
+  const owner = spec.ownerField;
+  const filter: Record<string, unknown> = owner ? { [owner]: auth.userId } : {};
+
+  // Single-document fetch by id.
+  if (body?.id !== undefined) {
+    if (typeof body.id !== 'string' || body.id.length === 0) {
+      return json(400, { error: 'id must be a non-empty string' });
+    }
+    Object.assign(filter, idFilter(body.id));
+  }
+
+  const rawFilters = body?.filters ?? [];
+  if (!Array.isArray(rawFilters)) {
+    return json(400, { error: 'filters must be an array' });
+  }
+  for (const raw of rawFilters) {
+    if (typeof raw !== 'object' || raw === null) {
+      return json(400, { error: 'each filter must be an object' });
+    }
+    const { field, op, value } = raw as Record<string, unknown>;
+    const path = resolveQueryField(field as string, spec);
+    if (!path) {
+      return json(400, { error: `unknown or invalid field: ${String(field)}` });
+    }
+    if (path === owner) {
+      // Ownership is not the client's to narrow or widen.
+      continue;
+    }
+
+    const existing = (filter[path] ?? {}) as Record<string, unknown>;
+    if (op === 'isNull') {
+      filter[path] = { ...existing, $eq: null };
+    } else if (op === 'isNotNull') {
+      filter[path] = { ...existing, $ne: null };
+    } else if (op === 'in') {
+      if (!Array.isArray(value) || value.length === 0) {
+        return json(400, { error: `"in" on ${path} needs a non-empty array` });
+      }
+      filter[path] = {
+        ...existing,
+        $in: value.map((entry) => queryValue(path, entry, spec)),
+      };
+    } else if (typeof op === 'string' && QUERY_OPERATORS[op]) {
+      filter[path] = {
+        ...existing,
+        [QUERY_OPERATORS[op]]: queryValue(path, value, spec),
+      };
+    } else {
+      return json(400, { error: `unsupported operator: ${String(op)}` });
+    }
+  }
+
+  const sort: Record<string, 1 | -1> = {};
+  const rawOrder = body?.order ?? [];
+  if (!Array.isArray(rawOrder)) {
+    return json(400, { error: 'order must be an array' });
+  }
+  for (const raw of rawOrder) {
+    if (typeof raw !== 'object' || raw === null) {
+      return json(400, { error: 'each order entry must be an object' });
+    }
+    const { field, descending } = raw as Record<string, unknown>;
+    const path = resolveQueryField(field as string, spec);
+    if (!path) {
+      return json(400, { error: `cannot sort by ${String(field)}` });
+    }
+    sort[path] = descending === true ? -1 : 1;
+  }
+
+  const rawLimit = body?.limit;
+  if (rawLimit !== undefined && (typeof rawLimit !== 'number' || rawLimit <= 0)) {
+    return json(400, { error: 'limit must be a positive number' });
+  }
+  const rawOffset = body?.offset;
+  if (rawOffset !== undefined && (typeof rawOffset !== 'number' || rawOffset < 0)) {
+    return json(400, { error: 'offset must be zero or more' });
+  }
+  // Capped regardless of what was asked for: an unbounded query is a way to
+  // turn one request into an outage.
+  const limit = Math.min(
+    typeof rawLimit === 'number' ? rawLimit : QUERY_DEFAULT_LIMIT,
+    QUERY_MAX_LIMIT,
+  );
+
+  try {
+    const client = await getMongo(env);
+    const collection = client.db(env.MONGO_DB).collection(name);
+
+    if (body?.count === true) {
+      return json(200, { count: await collection.countDocuments(filter) });
+    }
+
+    let cursor = collection.find(filter);
+    if (Object.keys(sort).length > 0) cursor = cursor.sort(sort);
+    if (typeof rawOffset === 'number') cursor = cursor.skip(rawOffset);
+    const documents = await cursor.limit(limit).toArray();
+
+    return json(200, {
+      documents: documents.map((document) => projectDocument(document, spec)),
+    });
+  } catch (error) {
+    console.error('mongo_easy query: failure', error);
+    return json(503, { error: 'transient failure, retry' });
+  }
+}
+
+/**
+ * Realtime changes over Server-Sent Events, driven by a MongoDB change
+ * stream. This is what makes realtime realtime — the server pushes a change
+ * the moment it commits instead of waiting to be asked.
+ *
+ * Requires a host that allows long-lived responses. Short-lived serverless
+ * functions will cut the stream; the client reconnects and its periodic sync
+ * covers the gap, so nothing is lost either way.
+ */
+export async function handleStream(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const auth = await authenticate(request, env, 'GET');
+  if ('response' in auth) return auth.response;
+
+  const requested = new URL(request.url).searchParams.get('collections');
+  const names = requested
+    ? requested.split(',').map((value) => value.trim()).filter(Boolean)
+    : Object.keys(COLLECTIONS);
+
+  const unknown = names.filter((name) => !COLLECTIONS[name]);
+  if (unknown.length > 0) {
+    return json(400, { error: `unknown collections: ${unknown.join(', ')}` });
+  }
+
+  const client = await getMongo(env);
+  const db = client.db(env.MONGO_DB);
+  const watched = [...names, TOMBSTONES];
+
+  const changes = db.watch(
+    [
+      {
+        $match: {
+          'ns.coll': { $in: watched },
+          operationType: { $in: ['insert', 'update', 'replace'] },
+        },
+      },
+    ],
+    { fullDocument: 'updateLookup' },
+  );
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      let open = true;
+      const send = (payload: unknown) => {
+        if (!open) return;
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+      };
+      const comment = (text: string) => {
+        if (!open) return;
+        controller.enqueue(encoder.encode(`: ${text}\n\n`));
+      };
+
+      const shutdown = async () => {
+        if (!open) return;
+        open = false;
+        clearInterval(heartbeat);
+        clearTimeout(lifetime);
+        try {
+          await changes.close();
+        } catch {
+          // Already closed.
+        }
+        try {
+          controller.close();
+        } catch {
+          // Already closed.
+        }
+      };
+
+      const heartbeat = setInterval(() => comment('keepalive'), STREAM_HEARTBEAT_MS);
+      // Hosts and proxies drop very long requests anyway; ending on our own
+      // terms means the client reconnects cleanly instead of erroring.
+      const lifetime = setTimeout(() => void shutdown(), STREAM_MAX_LIFETIME_MS);
+
+      request.signal?.addEventListener('abort', () => void shutdown());
+
+      comment('connected');
+
+      changes.on('change', (change: Record<string, unknown>) => {
+        const namespace = (change.ns as { coll?: string } | undefined)?.coll;
+        const full = change.fullDocument as Record<string, unknown> | undefined;
+        if (!namespace || !full) return;
+
+        if (namespace === TOMBSTONES) {
+          const collection = String(full.collection ?? '');
+          if (!names.includes(collection)) return;
+          const spec = COLLECTIONS[collection];
+          // Shared collections have no owner on the tombstone.
+          if (spec.ownerField && full.owner !== auth.userId) return;
+          send({
+            collection,
+            document: { id: String(full.doc_id), _deleted: true },
+          });
+          return;
+        }
+
+        const spec = COLLECTIONS[namespace];
+        if (!spec) return;
+        // Ownership is re-checked here, not just in the pipeline: this is the
+        // last line before another user's document would leave the process.
+        if (spec.ownerField && full[spec.ownerField] !== auth.userId) return;
+        send({ collection: namespace, document: projectDocument(full, spec) });
+      });
+
+      changes.on('error', (error: unknown) => {
+        console.warn('mongo_easy stream: change stream error', error);
+        void shutdown();
+      });
+      changes.on('close', () => void shutdown());
+    },
+    cancel() {
+      void changes.close().catch(() => {});
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      // Proxies that buffer would defeat the point of a stream.
+      'x-accel-buffering': 'no',
+    },
+  });
+}
+
+export function handleHealth(): Response {
+  return json(200, { status: 'ok' });
+}
+
+// Pull sorts on the watermark and filters by owner; without these indexes it
+// degrades into a collection scan on every sync. Created once per cold start.
+let indexesReady: Promise<void> | null = null;
+
+function ensureIndexes(client: MongoClient, env: Env): Promise<void> {
+  indexesReady ??= (async () => {
+    const db = client.db(env.MONGO_DB);
+    for (const [name, spec] of Object.entries(COLLECTIONS)) {
+      const key: Record<string, 1> = {};
+      if (spec.ownerField) key[spec.ownerField] = 1;
+      key[UPDATED_AT] = 1;
+      await db.collection(name).createIndex(key, { name: 'mongo_easy_sync' });
+    }
+    await db
+      .collection(TOMBSTONES)
+      .createIndex(
+        { collection: 1, owner: 1, deleted_at: 1 },
+        { name: 'mongo_easy_tombstones' },
+      );
+    await db
+      .collection(TOMBSTONES)
+      .createIndex(
+        { deleted_at: 1 },
+        { name: 'mongo_easy_ttl', expireAfterSeconds: TOMBSTONE_TTL_SECONDS },
+      );
+  })().catch((error: unknown) => {
+    // Never block writes on index creation — retry on the next request.
+    indexesReady = null;
+    console.warn('mongo_easy: index setup failed, continuing', error);
+  });
+  return indexesReady;
+}
+
 // Dev-only login: exchanges an email for a signed HS256 JWT so the quickstart
-// needs no third-party auth provider. Disabled unless AUTH_MODE=dev.
+// needs no third-party auth provider. Only reachable when AUTH_MODE=dev.
 // NOT for production — anyone who knows an email can get that user's token.
 export async function handleToken(
   request: Request,

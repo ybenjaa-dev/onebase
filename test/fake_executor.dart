@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:mongo_easy/src/client/document_writer.dart';
 import 'package:mongo_easy/src/client/sql_executor.dart';
 
 class RecordedCall {
@@ -40,5 +41,37 @@ class FakeExecutor implements SqlExecutor {
       {List<Object?> parameters = const []}) {
     calls.add(RecordedCall(sql, parameters));
     return Stream.value(rows);
+  }
+}
+
+class RecordedWrite {
+  RecordedWrite(this.op, this.collection, this.id, this.data);
+
+  final String op;
+  final String collection;
+  final String id;
+  final Map<String, Object?>? data;
+}
+
+class FakeWriter implements DocumentWriter {
+  final List<RecordedWrite> writes = [];
+
+  RecordedWrite get lastWrite => writes.last;
+
+  @override
+  Future<void> insert(
+      String collection, String id, Map<String, Object?> encoded) async {
+    writes.add(RecordedWrite('put', collection, id, encoded));
+  }
+
+  @override
+  Future<void> update(
+      String collection, String id, Map<String, Object?> encoded) async {
+    writes.add(RecordedWrite('patch', collection, id, encoded));
+  }
+
+  @override
+  Future<void> delete(String collection, String id) async {
+    writes.add(RecordedWrite('delete', collection, id, null));
   }
 }

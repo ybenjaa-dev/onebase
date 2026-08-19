@@ -3,7 +3,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:mongo_easy/mongo_easy.dart';
 
-import '../models/todo.dart';
+import '../mongo_easy_schema.g.dart';
 import '../providers.dart';
 
 class TodosScreen extends ConsumerWidget {
@@ -83,11 +83,10 @@ class _AddTodoForm extends HookConsumerWidget {
       isSaving.value = true;
       try {
         // Offline-first: resolves immediately, syncs in the background.
-        await MongoEasy.collection('todos').insert({
-          'title': title,
-          'done': false,
-          'created_at': DateTime.now(),
-        });
+        // The model and its id are generated — nothing hand-written.
+        await MongoEasyDb.todos.insert(
+          Todo(title: title, done: false, createdAt: DateTime.now()),
+        );
         if (!context.mounted) return;
         Navigator.of(context).pop();
       } on MongoEasyException catch (error) {
@@ -192,8 +191,17 @@ class _SyncBanner extends ConsumerWidget {
     final status = ref.watch(syncStatusProvider).value;
     final scheme = Theme.of(context).colorScheme;
 
+    final isLive = ref.watch(realtimeProvider).value ?? false;
+
     final (label, color, icon) = switch (status) {
       null => ('Connecting…', scheme.outline, Icons.cloud_queue),
+      SyncStatus(connected: false, pendingWrites: final pending)
+          when pending > 0 =>
+        (
+          'Offline — $pending change(s) waiting to upload',
+          scheme.outline,
+          Icons.cloud_off,
+        ),
       SyncStatus(connected: false) => (
           'Offline — changes are saved locally',
           scheme.outline,
@@ -204,6 +212,9 @@ class _SyncBanner extends ConsumerWidget {
           scheme.tertiary,
           Icons.cloud_sync
         ),
+      // Realtime connected means another device's edit shows up here at
+      // once, rather than on the next poll.
+      _ when isLive => ('Live', scheme.primary, Icons.bolt),
       _ => ('Synced', scheme.primary, Icons.cloud_done),
     };
 

@@ -17,11 +17,11 @@ void main() {
     final claims = decodeJwt(_fakeJwt({
       'sub': 'user-42',
       'exp': exp,
-      'aud': 'https://instance.powersync.journeyapps.com',
+      'aud': 'https://api.example.com',
     }));
     expect(claims.subject, 'user-42');
     expect(claims.expiresAt, DateTime.utc(2030));
-    expect(claims.audience, 'https://instance.powersync.journeyapps.com');
+    expect(claims.audience, 'https://api.example.com');
     expect(claims.isExpired, isFalse);
   });
 

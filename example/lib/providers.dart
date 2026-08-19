@@ -1,7 +1,7 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:mongo_easy/mongo_easy.dart';
 
-import 'models/todo.dart';
+import 'mongo_easy_schema.g.dart';
 import 'services/auth_service.dart';
 
 /// Overridden in main() with the loaded instance.
@@ -37,12 +37,10 @@ class AuthNotifier extends Notifier<AsyncValue<String?>> {
 final authProvider =
     NotifierProvider<AuthNotifier, AsyncValue<String?>>(AuthNotifier.new);
 
-final todosCollectionProvider = Provider<TypedCollection<Todo>>((ref) {
-  return MongoEasy.collection('todos').withConverter<Todo>(
-    fromJson: Todo.fromJson,
-    toJson: (todo) => todo.toJson(),
-  );
-});
+// No hand-written model, no converter wiring — MongoEasyDb.todos is
+// generated from mongo_easy.yaml and already returns Todo.
+final todosCollectionProvider =
+    Provider<TypedCollection<Todo>>((ref) => MongoEasyDb.todos);
 
 final todosProvider = StreamProvider.autoDispose<List<Todo>>((ref) {
   return ref
@@ -53,3 +51,7 @@ final todosProvider = StreamProvider.autoDispose<List<Todo>>((ref) {
 
 final syncStatusProvider =
     StreamProvider<SyncStatus>((ref) => MongoEasy.instance.statusStream);
+
+/// Whether the realtime channel is live, for the "live" badge.
+final realtimeProvider =
+    StreamProvider<bool>((ref) => MongoEasy.instance.realtimeState);

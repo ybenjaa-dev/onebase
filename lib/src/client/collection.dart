@@ -1,31 +1,36 @@
 import '../errors.dart';
 import '../query/query_builder.dart';
+import '../query/query_runner.dart';
 import '../schema/schema.dart';
 import '../schema/value_codec.dart';
-import 'sql_executor.dart';
+import 'document_writer.dart';
 import 'typed_collection.dart';
 
 /// A Firestore-style handle on one MongoDB collection.
 ///
-/// All reads hit the local SQLite replica (instant, works offline); all
-/// writes are applied locally first and uploaded in the background.
+/// In offline mode all reads hit the local SQLite replica (instant, works
+/// offline) and writes are applied locally first and uploaded in the
+/// background. In online mode both go straight to your backend. The API is
+/// identical either way.
 class MongoCollection {
   MongoCollection(
-    this._executor,
+    this._runner,
+    this._writer,
     this._schema, {
     required Future<String> Function() currentUserId,
     required String Function() newId,
   })  : _currentUserId = currentUserId,
         _newId = newId;
 
-  final SqlExecutor _executor;
+  final QueryRunner _runner;
+  final DocumentWriter _writer;
   final MongoCollectionSchema _schema;
   final Future<String> Function() _currentUserId;
   final String Function() _newId;
 
   String get name => _schema.name;
 
-  MongoQuery get _query => MongoQuery(_executor, _schema);
+  MongoQuery get _query => MongoQuery(_runner, _schema);
 
   /// Inserts [document] and returns its generated id.
   ///
@@ -39,21 +44,7 @@ class MongoCollection {
     }
 
     final id = _newId();
-    final columns = <String>['id'];
-    final values = <Object?>[id];
-    for (final MapEntry(:key, :value) in data.entries) {
-      final type = _schema.fieldType(key);
-      columns.add('"$key"');
-      values.add(
-          ValueCodec.encode(value, type, field: key, collection: _schema.name));
-    }
-
-    final placeholders = List.filled(columns.length, '?').join(', ');
-    await _executor.execute(
-      'INSERT INTO "${_schema.name}" (${columns.join(', ')}) '
-      'VALUES ($placeholders)',
-      values,
-    );
+    await _writer.insert(_schema.name, id, _encode(data));
     return id;
   }
 
@@ -63,33 +54,23 @@ class MongoCollection {
     if (changes.isEmpty) {
       throw const QueryException('update() received no changes.');
     }
-    final assignments = <String>[];
-    final values = <Object?>[];
-    for (final MapEntry(:key, :value) in changes.entries) {
-      final type = _schema.fieldType(key);
-      assignments.add('"$key" = ?');
-      values.add(
-          ValueCodec.encode(value, type, field: key, collection: _schema.name));
-    }
-    values.add(id);
-    await _executor.execute(
-      'UPDATE "${_schema.name}" SET ${assignments.join(', ')} WHERE id = ?',
-      values,
-    );
+    await _writer.update(_schema.name, id, _encode(changes));
+  }
+
+  Map<String, Object?> _encode(Map<String, Object?> document) {
+    return {
+      for (final MapEntry(:key, :value) in document.entries)
+        key: ValueCodec.encode(value, _schema.fieldType(key),
+            field: key, collection: _schema.name),
+    };
   }
 
   /// Deletes the document with [id]. No-op when it does not exist.
-  Future<void> delete(String id) {
-    return _executor
-        .execute('DELETE FROM "${_schema.name}" WHERE id = ?', [id]);
-  }
+  Future<void> delete(String id) => _writer.delete(_schema.name, id);
 
   /// Fetches one document by [id], or `null`.
-  Future<Map<String, Object?>?> findById(String id) async {
-    final row = await _executor
-        .getOptional('SELECT * FROM "${_schema.name}" WHERE id = ?', [id]);
-    return row == null ? null : ValueCodec.decodeRow(row, _schema);
-  }
+  Future<Map<String, Object?>?> findById(String id) =>
+      _runner.findById(_schema, id);
 
   /// All documents in the collection (synced for this user).
   Future<List<Map<String, Object?>>> find() => _query.find();

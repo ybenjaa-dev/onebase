@@ -1,0 +1,16 @@
+{
+  "name": "mongo-easy-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "pretest": "npm --prefix ../../example/backend install --silent",
+    "test": "tsx sync_e2e.ts"
+  },
+  "devDependencies": {
+    "jose": "^5.9.0",
+    "mongodb": "^6.10.0",
+    "mongodb-memory-server": "^10.1.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}

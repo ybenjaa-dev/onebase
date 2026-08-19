@@ -4,9 +4,9 @@ import '../errors.dart';
 
 /// Decoded (unverified) JWT payload claims.
 ///
-/// mongo_easy never verifies signatures client-side — verification happens in
-/// the PowerSync Service and the upload endpoint. This is only used to read
-/// `sub` and `exp` for user scoping and token refresh.
+/// mongo_easy never verifies signatures client-side — the backend does that
+/// on every request. This only reads `sub` and `exp` for owner-field
+/// auto-fill and refresh timing.
 class JwtClaims {
   const JwtClaims({required this.subject, this.expiresAt, this.audience});
 
@@ -58,8 +58,8 @@ JwtClaims decodeJwt(String token) {
   if (subject is! String || subject.isEmpty) {
     throw const InvalidTokenException(
       'JWT has no "sub" claim.',
-      hint: 'PowerSync requires a `sub` claim containing the user id. '
-          'Configure your auth provider (or token endpoint) to include it.',
+      hint: 'mongo_easy identifies users by the `sub` claim. Configure your '
+          'auth provider (or token endpoint) to include it.',
     );
   }
 

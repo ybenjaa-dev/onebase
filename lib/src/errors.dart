@@ -71,7 +71,7 @@ final class InvalidTokenException extends MongoEasyException {
 
 /// Thrown when uploading local writes to the backend endpoint fails.
 ///
-/// PowerSync retries the upload automatically, so a single occurrence is
+/// The sync engine retries automatically, so a single occurrence is
 /// usually transient. Persistent failures indicate a misconfigured
 /// [MongoEasyConfig.uploadUrl] or a broken backend deployment.
 final class UploadException extends MongoEasyException {

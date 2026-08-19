@@ -16,10 +16,14 @@ Future<void> main() async {
   await auth.load();
 
   await MongoEasy.init(MongoEasyConfig(
-    powersyncUrl: AppConfig.powersyncUrl,
-    uploadUrl: AppConfig.uploadUrl,
+    apiUrl: AppConfig.apiUrl,
     tokenProvider: TokenProvider(() async => auth.token),
     schema: mongoEasySchema,
+    // Offline-first with a live connection: writes work with no network, and
+    // another device's changes land here the moment they happen. Flip to
+    // MongoEasyMode.online for a thin client with no local database.
+    mode: AppConfig.online ? MongoEasyMode.online : MongoEasyMode.offline,
+    realtime: true,
   ));
 
   runApp(ProviderScope(

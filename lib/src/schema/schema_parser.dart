@@ -10,7 +10,7 @@ import 'schema.dart';
 ///   todos:
 ///     owner_field: owner_id
 ///     fields:
-///       title: text
+///       title: text!      # trailing ! → required, non-nullable in Dart
 ///       done: bool
 ///       owner_id: text
 ///   categories:
@@ -59,7 +59,7 @@ MongoEasySchema parseSchemaYaml(String yamlSource) {
       );
     }
 
-    const knownKeys = {'fields', 'owner_field', 'shared'};
+    const knownKeys = {'fields', 'owner_field', 'shared', 'model'};
     final unknown = value.keys
         .map((k) => k.toString())
         .where((k) => !knownKeys.contains(k));
@@ -82,6 +82,7 @@ MongoEasySchema parseSchemaYaml(String yamlSource) {
     }
 
     final fields = <String, MongoFieldType>{};
+    final required = <String>{};
     for (final MapEntry(key: fieldKey, value: fieldValue)
         in fieldsNode.entries) {
       final fieldName = fieldKey.toString();
@@ -90,10 +91,18 @@ MongoEasySchema parseSchemaYaml(String yamlSource) {
           'Field "$fieldName" of "$name" must map to a type string, '
           'got: $fieldValue.',
           hint: 'Valid types: '
-              '${MongoFieldType.values.map((t) => t.yamlName).join(', ')}.',
+              '${MongoFieldType.values.map((t) => t.yamlName).join(', ')}. '
+              'Add a trailing `!` to make a field required, e.g. `title: text!`.',
         );
       }
-      fields[fieldName] = MongoFieldType.parse(fieldValue);
+      // `text!` means "always present": non-nullable on the generated model
+      // and enforced by the backend.
+      final isRequired = fieldValue.endsWith('!');
+      final typeName = isRequired
+          ? fieldValue.substring(0, fieldValue.length - 1)
+          : fieldValue;
+      fields[fieldName] = MongoFieldType.parse(typeName.trim());
+      if (isRequired) required.add(fieldName);
     }
 
     final shared = value['shared'];
@@ -107,6 +116,8 @@ MongoEasySchema parseSchemaYaml(String yamlSource) {
       fields: fields,
       ownerField: value['owner_field']?.toString(),
       shared: shared as bool? ?? false,
+      requiredFields: required,
+      model: value['model']?.toString(),
     ));
   }
 
