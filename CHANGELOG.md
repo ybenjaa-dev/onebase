@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.2.0
+
+### Teams and groups
+
+- A collection can belong to a group instead of one user, with membership read
+  from a table you already keep and a write rule of `member`, `admin`, `owner`
+  or `none`. Reads, writes, sync and realtime are all narrowed to the caller's
+  groups, enforced by the backend from the verified token.
+
+### Pagination
+
+- Keyset cursors: `page()` returns items plus a cursor, and `startAfter()`
+  resumes from it. Paging seeks to the position rather than counting past
+  everything before it, so deep pages stay fast and stay stable while rows are
+  being inserted.
+- `pager()` drives an infinite-scrolling list — it accumulates pages, ignores
+  overlapping `loadMore()` calls, and exposes `refresh()` and `error`.
+- `id` is queryable and sortable like any other column.
+
+### Atomic writes
+
+- `Onebase.instance.batch()` groups writes into one MongoDB transaction. Offline
+  the batch is queued as a single unit.
+
+### Backend
+
+- Request bodies are capped before parsing, a push is capped at 1000
+  operations, and each user has a per-route rate budget per minute.
+
+### Project
+
+- CI runs the test suite, checks the generated backend for drift against the
+  templates, and exercises the end-to-end suites against a real MongoDB.
+
 ## 0.1.3
 
 Maintenance release.

@@ -71,7 +71,7 @@ flowchart LR
 
 ```yaml
 dependencies:
-  onebase: ^0.1.3    # requires Flutter 3.38+ / Dart 3.10+
+  onebase: ^0.2.0    # requires Flutter 3.38+ / Dart 3.10+
 ```
 
 **2. Describe your data** — `dart run onebase:setup --init` creates
@@ -119,6 +119,92 @@ docker build -t my-backend . && docker run -p 3000:3000 --env-file .env my-backe
 
 Or `npx vercel deploy --prod`, or `npm run dev` locally. Any MongoDB with a
 replica set works, including a free Atlas M0.
+
+## Pagination and infinite scroll
+
+Cursors are keyset-based: the query seeks straight to the position instead of
+counting past everything before it, so the thousandth page costs what the first
+one did. Rows inserted while someone scrolls cannot make a page repeat or skip
+an item.
+
+```dart
+var page = await OnebaseDb.todos.orderBy('created_at').limit(20).page();
+page.items;      // List<Todo>
+page.hasMore;    // is there another page
+page.cursor;     // pass to startAfter for the next one
+```
+
+For a scrolling list, `pager()` keeps the bookkeeping:
+
+```dart
+final pager = OnebaseDb.todos
+    .where('done', isEqualTo: false)
+    .orderBy('created_at', descending: true)
+    .pager(pageSize: 20);
+
+ListView.builder(
+  itemCount: pager.items.length + (pager.hasMore ? 1 : 0),
+  itemBuilder: (context, index) {
+    if (index >= pager.items.length) {
+      pager.loadMore();          // safe to call on every frame
+      return const CircularProgressIndicator();
+    }
+    return TodoTile(pager.items[index]);
+  },
+);
+```
+
+`loadMore()` ignores overlapping calls, so a scroll listener firing three times
+in one frame still loads one page. Listen to `pager.changes` to rebuild, and
+`refresh()` for pull-to-refresh. Failures land on `pager.error` and leave what
+is already loaded on screen.
+
+## Teams and groups
+
+A collection can belong to a group rather than one user. Membership comes from
+a table you already keep:
+
+```yaml
+memberships:
+  family:
+    collection: family_members
+    user_field: user_id
+    group_field: family_id
+    role_field: role          # optional, needed for `write: admin`
+
+collections:
+  chores:
+    scope:
+      membership: family
+      field: family_id
+      write: member           # owner | member | admin | none
+    fields:
+      title: text!
+      family_id: text!
+```
+
+Reads, writes, sync and the realtime stream are all narrowed to the groups the
+caller belongs to — enforced by the backend from the verified token, never by
+the client. `write: admin` requires the membership row's role; `write: owner`
+lets the group read while only the document's author writes; `write: none`
+makes it read-only for clients.
+
+The group field is immutable on update, so a document cannot be moved into a
+group whose members were never allowed to see it.
+
+## Atomic writes
+
+```dart
+final batch = await Onebase.instance.batch();
+final orderId = batch.insert('orders', {'total': 42});
+batch.update('inventory', stockId, {'count': 9});
+await batch.commit();
+```
+
+Every operation lands inside one MongoDB transaction — all of them, or none.
+Offline the whole batch is queued as a unit, so it stays atomic even if the app
+is killed before it syncs. Insert returns its id immediately, so later
+operations in the same batch can reference it.
 
 ## Offline or online
 
@@ -248,6 +334,10 @@ so your first sync works in minutes.
   token can't negotiate a weaker one.
 - **Queries can't become arbitrary database queries.** `/query` accepts a
   closed set of operators and only fields your schema declares.
+- **Group membership is resolved server-side** from the verified token.
+  Belonging to no group returns nothing, never everything.
+- **Requests are bounded.** Bodies are capped before parsing, a push is capped
+  at 1000 operations, and each user has a per-route budget per minute.
 - **File paths can't escape their prefix.** Private buckets namespace keys by
   user id; `..`, absolute paths and control characters are rejected rather than
   sanitized. The signed URL pins content type and length.
@@ -282,6 +372,8 @@ the command that fixes it.
 
 - **Conflicts are last-write-wins** by server timestamp. There is no custom
   merge hook yet.
+- **The rate limiter is per-instance**, held in memory. Behind several
+  instances the effective budget multiplies by instance count.
 - **Realtime needs a long-lived connection.** Container hosts hold it fine;
   short-lived serverless functions cut it and onebase falls back to polling.
 - **Uploads are not offline-queued.** Document writes survive with no network;
