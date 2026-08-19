@@ -8,7 +8,7 @@ import 'query_spec.dart';
 /// An immutable, chainable query — Firestore-style.
 ///
 /// ```dart
-/// final overdue = await MongoEasy.collection('todos')
+/// final overdue = await Mongobase.collection('todos')
 ///     .where('done', isEqualTo: false)
 ///     .where('due_at', isLessThan: DateTime.now())
 ///     .orderBy('due_at')

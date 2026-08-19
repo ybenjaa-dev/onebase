@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mongo_easy/src/cli/generate_dart_schema.dart';
-import 'package:mongo_easy/src/schema/schema.dart';
-import 'package:mongo_easy/src/schema/schema_parser.dart';
+import 'package:mongobase/src/cli/generate_dart_schema.dart';
+import 'package:mongobase/src/schema/schema.dart';
+import 'package:mongobase/src/schema/schema_parser.dart';
 
 void main() {
   final schema = parseSchemaYaml('''
@@ -100,7 +100,7 @@ collections:
 
   group('typed accessors', () {
     test('exposes one per collection, already converted', () {
-      expect(generated, contains('abstract final class MongoEasyDb {'));
+      expect(generated, contains('abstract final class MongobaseDb {'));
       expect(generated, contains('static TypedCollection<Todo> get todos =>'));
       expect(generated,
           contains('static TypedCollection<Category> get categories =>'));

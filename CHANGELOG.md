@@ -2,14 +2,22 @@
 
 ## 0.3.0
 
-**PowerSync is gone.** mongo_easy now owns the whole path: one package, one
+**Renamed from `mongo_easy` to `mongobase`.** The package now covers the whole
+backend — database, realtime and (next) file storage — so the name says
+platform rather than convenience wrapper. Update your dependency, change
+`package:mongo_easy/mongo_easy.dart` to `package:mongobase/mongobase.dart`,
+rename `mongo_easy.yaml` to `mongobase.yaml`, and re-run
+`dart run mongobase:setup --force`. The classes follow the same rule:
+`MongoEasy` → `Mongobase`, `MongoEasyConfig` → `MongobaseConfig`.
+
+**PowerSync is gone.** mongobase now owns the whole path: one package, one
 tiny backend, no third-party sync service or account. Offline is a choice,
 realtime is real, and your models are generated.
 
 ### Modes
 
-- `MongoEasyConfig.mode` picks `MongoEasyMode.offline` (default — local SQLite
-  replica, works with no network) or `MongoEasyMode.online` (thin client, every
+- `MongobaseConfig.mode` picks `MongobaseMode.offline` (default — local SQLite
+  replica, works with no network) or `MongobaseMode.online` (thin client, every
   read and write hits the backend). The collection API is identical in both, so
   switching is one line.
 - Online writes throw on failure instead of queueing, so your UI can show the
@@ -30,8 +38,8 @@ realtime is real, and your models are generated.
 
 ### Generated models
 
-- `dart run mongo_easy:setup` now generates a typed model per collection plus
-  `MongoEasyDb.todos` accessors — no hand-written model classes, no
+- `dart run mongobase:setup` now generates a typed model per collection plus
+  `MongobaseDb.todos` accessors — no hand-written model classes, no
   `withConverter` wiring.
 - A trailing `!` in the YAML (`title: text!`) makes a field required:
   non-nullable in Dart and enforced by the backend on whole-document writes.
@@ -40,16 +48,16 @@ realtime is real, and your models are generated.
 
 ### Doctor
 
-- `dart run mongo_easy:setup --doctor [--api-url ...]` diagnoses schema drift
+- `dart run mongobase:setup --doctor [--api-url ...]` diagnoses schema drift
   between the app and the deployed backend, `.env` problems, an unsafe
   `AUTH_MODE`, and reachability — each with the command that fixes it.
 
 ### Breaking
 
-- `MongoEasyConfig` takes a single `apiUrl` instead of `powersyncUrl` +
+- `MongobaseConfig` takes a single `apiUrl` instead of `powersyncUrl` +
   `uploadUrl`, and must not end with a slash.
 - `powersync` and `sqlite3_flutter_libs` (eol) are replaced by `sqlite_async`.
-- `SyncStatus` is mongo_easy's own type now, reporting `connected`,
+- `SyncStatus` is mongobase's own type now, reporting `connected`,
   `downloading`, `uploading`, `pendingWrites`, `lastSyncedAt`, `offlineReason`
   and `error`.
 - The CLI generates one backend at `backend/`. `--auto`, `--self-host`,
@@ -57,7 +65,7 @@ realtime is real, and your models are generated.
 - The write route moved from `/api/upload` to `/push`, with payload
   `{transactions: [{id, ops}]}`.
 - Field names starting with `_` are rejected by the schema parser; they are
-  reserved for mongo_easy.
+  reserved for mongobase.
 
 ### The sync engine
 
@@ -81,7 +89,7 @@ realtime is real, and your models are generated.
 - Pull is incremental against an `_updated_at` watermark, owner-scoped, paged,
   and ignores the most recent second so transactions committing out of
   timestamp order cannot slip behind the cursor.
-- Deletes are recorded in `_mongo_easy_tombstones` (30-day TTL), leaving your
+- Deletes are recorded in `_mongobase_tombstones` (30-day TTL), leaving your
   collections clean.
 - Sync indexes are created automatically on first request.
 - Keeps every guarantee from 0.2.1: required `AUTH_MODE`, pinned JWT
@@ -100,7 +108,7 @@ realtime is real, and your models are generated.
 ## 0.2.1
 
 Backend hardening — regenerate and redeploy with
-`dart run mongo_easy:setup --force` to pick these up.
+`dart run mongobase:setup --force` to pick these up.
 
 **Breaking**
 
@@ -117,7 +125,7 @@ Backend hardening — regenerate and redeploy with
 
 **Security**
 
-- The upload endpoint now writes only fields declared in `mongo_easy.yaml`.
+- The upload endpoint now writes only fields declared in `mongobase.yaml`.
   Undeclared keys in a client payload are dropped and logged, closing a mass
   assignment hole where a patched client could set server-managed fields.
 - `put` applies a `$set` upsert instead of replacing the document, so fields
@@ -142,10 +150,10 @@ Backend hardening — regenerate and redeploy with
 
 ## 0.2.0
 
-- One-command setup: `dart run mongo_easy:setup --auto --mongo-uri ...`
+- One-command setup: `dart run mongobase:setup --auto --mongo-uri ...`
   provisions the PowerSync Cloud instance, deploys sync streams, configures
   dev auth on both sides, deploys the Vercel backend with env vars, and
-  writes `lib/mongo_easy_endpoints.g.dart`.
+  writes `lib/mongobase_endpoints.g.dart`.
 - Self-hosted mode: `--self-host --mongo-uri ...` generates a docker-compose
   deployment (PowerSync service + upload backend) wired to your MongoDB —
   no third-party accounts.
@@ -154,7 +162,7 @@ Backend hardening — regenerate and redeploy with
 
 Initial release.
 
-- Firestore-style API over PowerSync + MongoDB Atlas: `MongoEasy.init`,
+- Firestore-style API over PowerSync + MongoDB Atlas: `Mongobase.init`,
   `collection()`, `find/findOne/findById/count`, `insert/update/delete`,
   reactive `watch()` streams.
 - Chainable query builder compiled to parameterized SQLite: `where` with
@@ -167,7 +175,7 @@ Initial release.
   token's `sub`.
 - Offline-first writes with automatic background upload and
   PowerSync-compliant retry semantics.
-- `dart run mongo_easy:setup` CLI: starter schema, PowerSync Sync Streams
+- `dart run mongobase:setup` CLI: starter schema, PowerSync Sync Streams
   YAML, Dart schema codegen, and a deployable upload backend (+ dev-token
   endpoint) for Vercel, Supabase Edge Functions, or Cloudflare Workers.
 - Example Todo app: login, per-user data, offline banner, realtime sync.

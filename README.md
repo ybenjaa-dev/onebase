@@ -1,11 +1,11 @@
-# mongo_easy
+# mongobase
 
 **Firebase-like developer experience for MongoDB in Flutter.**
 Offline-first, reactive, per-user data — one package, one tiny backend.
 
 MongoDB retired Realm, Atlas Device Sync and the Data API (EOL September 30,
 2025), leaving Flutter developers without an official "no backend" path to
-MongoDB. `mongo_easy` fills that gap: a Firestore-style API over a local
+MongoDB. `mongobase` fills that gap: a Firestore-style API over a local
 SQLite replica, a sync engine built into the package, and a CLI that
 generates the one small server that stands between your app and MongoDB.
 
@@ -13,24 +13,24 @@ No third-party sync service. No vendor account. Nothing to keep running
 except your database and one container.
 
 ```dart
-await MongoEasy.init(MongoEasyConfig(
+await Mongobase.init(MongobaseConfig(
   apiUrl: 'https://your-backend.example.com',
   tokenProvider: TokenProvider(() async => myAuth.currentJwt),
-  schema: mongoEasySchema, // generated
+  schema: mongobaseSchema, // generated
 ));
 
 // Typed collections and models are generated from your YAML — no
 // hand-written model class, no converter wiring.
-Stream<List<Todo>> live = MongoEasyDb.todos
+Stream<List<Todo>> live = MongobaseDb.todos
     .where('done', isEqualTo: false)
     .orderBy('created_at', descending: true)
     .limit(50)
     .watch();
 
 // Offline-first writes — instant locally, synced in the background:
-final id = await MongoEasyDb.todos.insert(Todo(title: 'Ship it', done: false));
-await MongoEasyDb.todos.update(id, {'done': true});
-await MongoEasyDb.todos.delete(id);
+final id = await MongobaseDb.todos.insert(Todo(title: 'Ship it', done: false));
+await MongobaseDb.todos.update(id, {'done': true});
+await MongobaseDb.todos.delete(id);
 ```
 
 ## How it works
@@ -66,9 +66,9 @@ flowchart LR
 ## Offline or online — one line
 
 ```dart
-MongoEasyConfig(
-  mode: MongoEasyMode.offline,  // default: local replica, works with no network
-  // mode: MongoEasyMode.online, // thin client: every read and write hits the backend
+MongobaseConfig(
+  mode: MongobaseMode.offline,  // default: local replica, works with no network
+  // mode: MongobaseMode.online, // thin client: every read and write hits the backend
   realtime: true,                // live changes in either mode
   realtimeCollections: {'todos'}, // optional: subscribe to part of the schema
 )
@@ -90,13 +90,13 @@ Your app code is identical in both. Switching is one line.
 
 ```yaml
 dependencies:
-  mongo_easy: ^0.3.0
+  mongobase: ^0.3.0
 ```
 
-**2. Describe your data** — create `mongo_easy.yaml`:
+**2. Describe your data** — create `mongobase.yaml`:
 
 ```bash
-dart run mongo_easy:setup --init
+dart run mongobase:setup --init
 ```
 
 ```yaml
@@ -121,14 +121,14 @@ model, and enforced by the backend on every whole-document write. Add
 **3. Generate everything**
 
 ```bash
-dart run mongo_easy:setup
+dart run mongobase:setup
 ```
 
 This writes:
 
 | Path | What it is |
 |---|---|
-| `lib/mongo_easy_schema.g.dart` | Typed models (`Todo`), typed collections (`MongoEasyDb.todos`), and the runtime schema |
+| `lib/mongobase_schema.g.dart` | Typed models (`Todo`), typed collections (`MongobaseDb.todos`), and the runtime schema |
 | `backend/` | Your server: five routes, a Dockerfile, and a Vercel adapter |
 
 **4. Run the backend anywhere**
@@ -148,7 +148,7 @@ complete Todo app with login, offline banner and realtime sync.
 
 ## Auth: bring your own JWTs
 
-`mongo_easy` is auth-agnostic — anything that issues JWTs works:
+`mongobase` is auth-agnostic — anything that issues JWTs works:
 
 ```dart
 // Supabase Auth
@@ -178,14 +178,14 @@ The backend's `AUTH_MODE` decides how those tokens are verified. It has
 `JWT_ISSUER` is optional in every mode; set it whenever your provider
 publishes an `iss` claim.
 
-Call `MongoEasy.instance.refreshToken()` after sign-in/out, and
-`MongoEasy.instance.clearLocalData()` on sign-out so the next user can't see
+Call `Mongobase.instance.refreshToken()` after sign-in/out, and
+`Mongobase.instance.clearLocalData()` on sign-out so the next user can't see
 cached documents.
 
 ## Typed models
 
 ```dart
-final todos = MongoEasy.collection('todos').withConverter<Todo>(
+final todos = Mongobase.collection('todos').withConverter<Todo>(
   fromJson: Todo.fromJson,
   toJson: (todo) => todo.toJson(),
 );
@@ -208,7 +208,7 @@ final String id = await todos.insert(Todo(title: 'Ship it'));
 - **Every route verifies the JWT** — reads and writes alike — with pinned
   algorithms and, in `jwks` mode, a required audience.
 - **Only declared fields are written.** The upload endpoint projects every
-  incoming document onto the fields in `mongo_easy.yaml` and drops the rest
+  incoming document onto the fields in `mongobase.yaml` and drops the rest
   (logging what it dropped). A patched client cannot set a server-managed
   field like `role` or `credits` just by putting it in the payload.
 - **Writes never clobber server state.** `put` is a `$set` upsert, not a
@@ -231,12 +231,12 @@ final String id = await todos.insert(Todo(title: 'Ship it'));
   so a bad op can never wedge the upload queue; only transient failures
   return 5xx and retry.
 - **Deletes leave your collections clean.** They are recorded in
-  `_mongo_easy_tombstones` with a 30-day TTL so other devices learn about
+  `_mongobase_tombstones` with a 30-day TTL so other devices learn about
   them, rather than flagging your documents as deleted forever.
 
 ## vs Firebase
 
-| | Firestore | mongo_easy (MongoDB) |
+| | Firestore | mongobase (MongoDB) |
 |---|---|---|
 | Reactive queries | `snapshots()` | `watch()` |
 | Offline-first | Cache-based | Full local SQLite replica |
@@ -255,7 +255,7 @@ final String id = await todos.insert(Todo(title: 'Ship it'));
   wins.
 - **Realtime needs a long-lived connection.** Container hosts (Fly, Railway,
   Render, Cloud Run, a VPS) hold it fine. Short-lived serverless functions cut
-  it, and mongo_easy falls back to polling — correct, just not instant.
+  it, and mongobase falls back to polling — correct, just not instant.
 - **Offline mode has a ~1s floor** on how quickly another device's change can
   arrive through `/pull`, because pull deliberately ignores the most recent
   second (see the sync notes above). Realtime bypasses this; your own writes
@@ -266,14 +266,14 @@ final String id = await todos.insert(Todo(title: 'Ship it'));
   role-based rules are on the roadmap.
 - No aggregation pipeline on-device; `count()` and filters cover the common
   cases.
-- Removing a field from `mongo_easy.yaml` leaves its column in the local
+- Removing a field from `mongobase.yaml` leaves its column in the local
   database so a downgrade cannot lose data.
 - File/attachment storage (S3-compatible) is not in this release.
 
 ## Diagnosing a project
 
 ```bash
-dart run mongo_easy:setup --doctor --api-url https://your-backend.example.com
+dart run mongobase:setup --doctor --api-url https://your-backend.example.com
 ```
 
 Checks the things that actually break apps: a schema that drifted from the
@@ -282,17 +282,17 @@ the backend answers at all. Each finding comes with the command that fixes it.
 
 ## Troubleshooting
 
-Every `MongoEasyException` carries a `hint` with the likely fix. Common ones:
+Every `MongobaseException` carries a `hint` with the likely fix. Common ones:
 
-- *"Unknown collection"* — add it to `mongo_easy.yaml`, re-run
-  `dart run mongo_easy:setup`, redeploy the backend.
+- *"Unknown collection"* — add it to `mongobase.yaml`, re-run
+  `dart run mongobase:setup`, redeploy the backend.
 - *"Token is not a JWT"* — your `TokenProvider` returned a session object or
   API key instead of the raw JWT string.
 - *Sync returns 401* — the backend's `JWT_SECRET`/`JWKS_URL` doesn't match
-  what signs your tokens. Check `MongoEasy.instance.status.error`.
+  what signs your tokens. Check `Mongobase.instance.status.error`.
 - *Nothing syncs down* — run `--doctor --api-url ...`; the usual cause is a
   backend deployed from an older schema.
-- *Realtime never connects* — check `MongoEasy.instance.isRealtimeConnected`.
+- *Realtime never connects* — check `Mongobase.instance.isRealtimeConnected`.
   Serverless hosts cut long connections; deploy the container image if you
   need instant updates.
 - *Writes never leave the queue* — `status.pendingWrites` stays above zero;

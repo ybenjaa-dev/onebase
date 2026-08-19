@@ -16,7 +16,7 @@ class SyncEngine {
   SyncEngine({
     required LocalStore store,
     required SyncApi api,
-    required MongoEasySchema schema,
+    required MongobaseSchema schema,
     Duration interval = const Duration(seconds: 5),
     Duration maxBackoff = const Duration(minutes: 5),
   })  : _store = store,
@@ -27,7 +27,7 @@ class SyncEngine {
 
   final LocalStore _store;
   final SyncApi _api;
-  final MongoEasySchema _schema;
+  final MongobaseSchema _schema;
   final Duration _interval;
   final Duration _maxBackoff;
 

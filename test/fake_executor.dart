@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:mongo_easy/src/client/document_writer.dart';
-import 'package:mongo_easy/src/client/sql_executor.dart';
+import 'package:mongobase/src/client/document_writer.dart';
+import 'package:mongobase/src/client/sql_executor.dart';
 
 class RecordedCall {
   RecordedCall(this.sql, this.parameters);

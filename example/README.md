@@ -1,9 +1,9 @@
-# mongo_easy example — offline-first todos
+# mongobase example — offline-first todos
 
-A complete Riverpod + hooks app on mongo_easy: email login, per-user todos,
+A complete Riverpod + hooks app on mongobase: email login, per-user todos,
 reactive lists, a live indicator, and writes that work with the network off.
-The `Todo` model and `MongoEasyDb.todos` are generated from
-`mongo_easy.yaml` — there is no hand-written model in this app.
+The `Todo` model and `MongobaseDb.todos` are generated from
+`mongobase.yaml` — there is no hand-written model in this app.
 
 ## Run it
 

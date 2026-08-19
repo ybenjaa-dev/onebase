@@ -6,7 +6,7 @@ type FieldType = 'text' | 'int' | 'double' | 'bool' | 'datetime' | 'json';
 
 interface CollectionSpec {
   ownerField?: string;
-  /** Fields declared with a trailing `!` in mongo_easy.yaml. */
+  /** Fields declared with a trailing `!` in mongobase.yaml. */
   required?: string[];
   fields: Record<string, FieldType>;
 }
@@ -58,7 +58,7 @@ const UPDATED_AT = '_updated_at';
  * each tombstone after 30 days — a client offline for longer re-syncs from
  * scratch instead of missing a delete.
  */
-const TOMBSTONES = '_mongo_easy_tombstones';
+const TOMBSTONES = '_mongobase_tombstones';
 const TOMBSTONE_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 /** Never accepted from a client, never echoed back as a data field. */
@@ -220,7 +220,7 @@ export function readEnv(get: (key: string) => string | undefined): Env {
 
   if (authMode === 'dev') {
     console.warn(
-      'mongo_easy: AUTH_MODE=dev — the /token endpoint will sign a JWT for ' +
+      'mongobase: AUTH_MODE=dev — the /token endpoint will sign a JWT for ' +
         'any email address. Switch to AUTH_MODE=jwks (or hs256) before ' +
         'letting real users near this deployment.',
     );
@@ -325,7 +325,7 @@ function convertDocument(
   return { doc, dropped };
 }
 
-// mongo_easy generates UUID string ids; documents created server-side may
+// mongobase generates UUID string ids; documents created server-side may
 // use ObjectId. Match either representation. Always an `$in` so the filter
 // never contributes a derived `_id` to an upsert (which would conflict with
 // `$setOnInsert`).
@@ -424,7 +424,7 @@ async function applyOps(
       skipped.push({
         id: op.id,
         collection: op.collection,
-        reason: 'unknown collection — re-run `dart run mongo_easy:setup` and redeploy',
+        reason: 'unknown collection — re-run `dart run mongobase:setup` and redeploy',
       });
       continue;
     }
@@ -580,7 +580,7 @@ async function applyUpload(
       if (!isTransactionUnsupportedError(error)) throw error;
       transactionsSupported = false;
       console.warn(
-        'mongo_easy: this MongoDB deployment does not support transactions ' +
+        'mongobase: this MongoDB deployment does not support transactions ' +
           '(needs a replica set). Falling back to per-operation writes.',
       );
     } finally {
@@ -630,7 +630,7 @@ async function authenticate(
     return { userId: await verifyToken(authorization.slice(7), env) };
   } catch (error) {
     // Do not echo the verification error: it can leak configuration details.
-    console.warn('mongo_easy: token rejected', error);
+    console.warn('mongobase: token rejected', error);
     return { response: json(401, { error: 'invalid token' }) };
   }
 }
@@ -678,12 +678,12 @@ export async function handlePush(
     await ensureIndexes(client, env);
     const result = await applyUpload(client, env.MONGO_DB, auth.userId, ops);
     if (result.skipped.length > 0) {
-      console.warn('mongo_easy push: skipped ops', JSON.stringify(result.skipped));
+      console.warn('mongobase push: skipped ops', JSON.stringify(result.skipped));
     }
     if (result.dropped.length > 0) {
       console.warn(
-        'mongo_easy push: dropped undeclared fields (add them to ' +
-          'mongo_easy.yaml and redeploy if they are meant to sync)',
+        'mongobase push: dropped undeclared fields (add them to ' +
+          'mongobase.yaml and redeploy if they are meant to sync)',
         JSON.stringify(result.dropped),
       );
     }
@@ -691,7 +691,7 @@ export async function handlePush(
     // not turned into errors, so the client queue never gets stuck.
     return json(200, result);
   } catch (error) {
-    console.error('mongo_easy push: transient failure', error);
+    console.error('mongobase push: transient failure', error);
     return json(503, { error: 'transient failure, client will retry' });
   }
 }
@@ -796,7 +796,7 @@ export async function handlePull(
       has_more: docsFull || tombsFull,
     });
   } catch (error) {
-    console.error('mongo_easy pull: transient failure', error);
+    console.error('mongobase pull: transient failure', error);
     return json(503, { error: 'transient failure, client will retry' });
   }
 }
@@ -982,7 +982,7 @@ export async function handleQuery(
       documents: documents.map((document) => projectDocument(document, spec)),
     });
   } catch (error) {
-    console.error('mongo_easy query: failure', error);
+    console.error('mongobase query: failure', error);
     return json(503, { error: 'transient failure, retry' });
   }
 }
@@ -1095,7 +1095,7 @@ export async function handleStream(
       });
 
       changes.on('error', (error: unknown) => {
-        console.warn('mongo_easy stream: change stream error', error);
+        console.warn('mongobase stream: change stream error', error);
         void shutdown();
       });
       changes.on('close', () => void shutdown());
@@ -1132,24 +1132,24 @@ function ensureIndexes(client: MongoClient, env: Env): Promise<void> {
       const key: Record<string, 1> = {};
       if (spec.ownerField) key[spec.ownerField] = 1;
       key[UPDATED_AT] = 1;
-      await db.collection(name).createIndex(key, { name: 'mongo_easy_sync' });
+      await db.collection(name).createIndex(key, { name: 'mongobase_sync' });
     }
     await db
       .collection(TOMBSTONES)
       .createIndex(
         { collection: 1, owner: 1, deleted_at: 1 },
-        { name: 'mongo_easy_tombstones' },
+        { name: 'mongobase_tombstones' },
       );
     await db
       .collection(TOMBSTONES)
       .createIndex(
         { deleted_at: 1 },
-        { name: 'mongo_easy_ttl', expireAfterSeconds: TOMBSTONE_TTL_SECONDS },
+        { name: 'mongobase_ttl', expireAfterSeconds: TOMBSTONE_TTL_SECONDS },
       );
   })().catch((error: unknown) => {
     // Never block writes on index creation — retry on the next request.
     indexesReady = null;
-    console.warn('mongo_easy: index setup failed, continuing', error);
+    console.warn('mongobase: index setup failed, continuing', error);
   });
   return indexesReady;
 }
@@ -1183,9 +1183,9 @@ export async function handleToken(
 
   const sub = await stableUserId(email.trim().toLowerCase());
   const token = await new SignJWT({ email })
-    .setProtectedHeader({ alg: 'HS256', kid: 'mongo-easy-dev' })
+    .setProtectedHeader({ alg: 'HS256', kid: 'mongobase-dev' })
     .setSubject(sub)
-    .setAudience(env.JWT_AUDIENCE ?? 'mongo-easy-dev')
+    .setAudience(env.JWT_AUDIENCE ?? 'mongobase-dev')
     .setIssuedAt()
     .setExpirationTime('12h')
     .sign(new TextEncoder().encode(env.JWT_SECRET));

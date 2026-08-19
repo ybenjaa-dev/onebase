@@ -1,9 +1,9 @@
-/// Base class for all errors thrown by mongo_easy.
+/// Base class for all errors thrown by mongobase.
 ///
 /// Every exception carries a [message] describing what went wrong and,
 /// where possible, a [hint] describing how to fix it.
-sealed class MongoEasyException implements Exception {
-  const MongoEasyException(this.message, {this.hint});
+sealed class MongobaseException implements Exception {
+  const MongobaseException(this.message, {this.hint});
 
   /// What went wrong.
   final String message;
@@ -13,49 +13,49 @@ sealed class MongoEasyException implements Exception {
 
   @override
   String toString() =>
-      'MongoEasyException: $message${hint == null ? '' : '\n  hint: $hint'}';
+      'MongobaseException: $message${hint == null ? '' : '\n  hint: $hint'}';
 }
 
-/// Thrown when [MongoEasy.instance] is accessed before [MongoEasy.init].
-final class NotInitializedException extends MongoEasyException {
+/// Thrown when [Mongobase.instance] is accessed before [Mongobase.init].
+final class NotInitializedException extends MongobaseException {
   const NotInitializedException()
       : super(
-          'MongoEasy has not been initialized.',
-          hint: 'Call `await MongoEasy.init(MongoEasyConfig(...))` before '
+          'Mongobase has not been initialized.',
+          hint: 'Call `await Mongobase.init(MongobaseConfig(...))` before '
               'accessing collections — typically in main() before runApp().',
         );
 }
 
-/// Thrown when [MongoEasyConfig] contains invalid or missing values.
-final class ConfigurationException extends MongoEasyException {
+/// Thrown when [MongobaseConfig] contains invalid or missing values.
+final class ConfigurationException extends MongobaseException {
   const ConfigurationException(super.message, {super.hint});
 }
 
 /// Thrown when accessing a collection that is not declared in the schema.
-final class UnknownCollectionException extends MongoEasyException {
+final class UnknownCollectionException extends MongobaseException {
   UnknownCollectionException(String collection, Iterable<String> known)
       : super(
           'Unknown collection "$collection".',
           hint:
               'Declared collections: ${known.isEmpty ? '(none)' : known.join(', ')}. '
-              'Add "$collection" to mongo_easy.yaml and re-run '
-              '`dart run mongo_easy:setup`.',
+              'Add "$collection" to mongobase.yaml and re-run '
+              '`dart run mongobase:setup`.',
         );
 }
 
 /// Thrown when a query or write references a field that is not in the schema.
-final class UnknownFieldException extends MongoEasyException {
+final class UnknownFieldException extends MongobaseException {
   UnknownFieldException(String field, String collection, Iterable<String> known)
       : super(
           'Unknown field "$field" on collection "$collection".',
           hint: 'Declared fields: ${known.join(', ')}. '
-              'Add it to mongo_easy.yaml and re-run '
-              '`dart run mongo_easy:setup`, or fix the field name.',
+              'Add it to mongobase.yaml and re-run '
+              '`dart run mongobase:setup`, or fix the field name.',
         );
 }
 
 /// Thrown when a field name or dot-path is not a valid identifier.
-final class InvalidFieldNameException extends MongoEasyException {
+final class InvalidFieldNameException extends MongobaseException {
   InvalidFieldNameException(String field)
       : super(
           'Invalid field name "$field".',
@@ -65,7 +65,7 @@ final class InvalidFieldNameException extends MongoEasyException {
 }
 
 /// Thrown when the auth token is missing, malformed, or expired.
-final class InvalidTokenException extends MongoEasyException {
+final class InvalidTokenException extends MongobaseException {
   const InvalidTokenException(super.message, {super.hint});
 }
 
@@ -73,8 +73,8 @@ final class InvalidTokenException extends MongoEasyException {
 ///
 /// The sync engine retries automatically, so a single occurrence is
 /// usually transient. Persistent failures indicate a misconfigured
-/// [MongoEasyConfig.uploadUrl] or a broken backend deployment.
-final class UploadException extends MongoEasyException {
+/// [MongobaseConfig.uploadUrl] or a broken backend deployment.
+final class UploadException extends MongobaseException {
   const UploadException(super.message, {super.hint, this.statusCode});
 
   /// HTTP status returned by the upload endpoint, if a response was received.
@@ -82,11 +82,11 @@ final class UploadException extends MongoEasyException {
 }
 
 /// Thrown when a query is structurally invalid (e.g. empty `whereIn` list).
-final class QueryException extends MongoEasyException {
+final class QueryException extends MongobaseException {
   const QueryException(super.message, {super.hint});
 }
 
-/// Thrown when parsing `mongo_easy.yaml` fails.
-final class SchemaParseException extends MongoEasyException {
+/// Thrown when parsing `mongobase.yaml` fails.
+final class SchemaParseException extends MongobaseException {
   const SchemaParseException(super.message, {super.hint});
 }

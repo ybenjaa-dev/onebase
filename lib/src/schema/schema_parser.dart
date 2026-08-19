@@ -3,7 +3,7 @@ import 'package:yaml/yaml.dart';
 import '../errors.dart';
 import 'schema.dart';
 
-/// Parses `mongo_easy.yaml` into a [MongoEasySchema].
+/// Parses `mongobase.yaml` into a [MongobaseSchema].
 ///
 /// ```yaml
 /// collections:
@@ -18,27 +18,27 @@ import 'schema.dart';
 ///     fields:
 ///       name: text
 /// ```
-MongoEasySchema parseSchemaYaml(String yamlSource) {
+MongobaseSchema parseSchemaYaml(String yamlSource) {
   final Object? root;
   try {
     root = loadYaml(yamlSource);
   } on YamlException catch (error) {
     throw SchemaParseException(
-      'mongo_easy.yaml is not valid YAML: ${error.message}',
+      'mongobase.yaml is not valid YAML: ${error.message}',
       hint: 'Fix the syntax error near line ${error.span?.start.line}.',
     );
   }
 
   if (root is! YamlMap) {
     throw const SchemaParseException(
-      'mongo_easy.yaml must be a YAML map with a top-level `collections` key.',
+      'mongobase.yaml must be a YAML map with a top-level `collections` key.',
     );
   }
 
   final collectionsNode = root['collections'];
   if (collectionsNode is! YamlMap || collectionsNode.isEmpty) {
     throw const SchemaParseException(
-      'mongo_easy.yaml has no `collections`.',
+      'mongobase.yaml has no `collections`.',
       hint: 'Declare at least one collection:\n'
           'collections:\n'
           '  todos:\n'
@@ -121,5 +121,5 @@ MongoEasySchema parseSchemaYaml(String yamlSource) {
     ));
   }
 
-  return MongoEasySchema(collections);
+  return MongobaseSchema(collections);
 }

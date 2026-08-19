@@ -175,7 +175,7 @@ await t('a batch is applied atomically', async () => {
 
 await t('sync indexes were created', async () => {
   const names = (await todos.indexes()).map((i) => i.name);
-  assert.ok(names.includes('mongo_easy_sync'), `got ${names}`);
+  assert.ok(names.includes('mongobase_sync'), `got ${names}`);
 });
 
 await t('unknown collection is reported, not crashed', async () => {

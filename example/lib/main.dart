@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:mongo_easy/mongo_easy.dart';
+import 'package:mongobase/mongobase.dart';
 
 import 'config.dart';
-import 'mongo_easy_schema.g.dart';
+import 'mongobase_schema.g.dart';
 import 'providers.dart';
 import 'screens/login_screen.dart';
 import 'screens/todos_screen.dart';
@@ -15,14 +15,14 @@ Future<void> main() async {
   final auth = AuthService();
   await auth.load();
 
-  await MongoEasy.init(MongoEasyConfig(
+  await Mongobase.init(MongobaseConfig(
     apiUrl: AppConfig.apiUrl,
     tokenProvider: TokenProvider(() async => auth.token),
-    schema: mongoEasySchema,
+    schema: mongobaseSchema,
     // Offline-first with a live connection: writes work with no network, and
     // another device's changes land here the moment they happen. Flip to
-    // MongoEasyMode.online for a thin client with no local database.
-    mode: AppConfig.online ? MongoEasyMode.online : MongoEasyMode.offline,
+    // MongobaseMode.online for a thin client with no local database.
+    mode: AppConfig.online ? MongobaseMode.online : MongobaseMode.offline,
     realtime: true,
   ));
 
@@ -40,7 +40,7 @@ class TodoApp extends ConsumerWidget {
     final signedInEmail = ref.watch(authProvider).value;
 
     return MaterialApp(
-      title: 'mongo_easy Todos',
+      title: 'mongobase Todos',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,

@@ -52,7 +52,7 @@ class SyncApi {
     if (token == null || token.isEmpty) {
       throw const InvalidTokenException(
         'No auth token available.',
-        hint: 'Sign in first; mongo_easy keeps working offline until then.',
+        hint: 'Sign in first; mongobase keeps working offline until then.',
       );
     }
 
@@ -165,7 +165,7 @@ class SyncApi {
     if (token == null || token.isEmpty) {
       throw const InvalidTokenException(
         'No auth token available for the realtime stream.',
-        hint: 'Sign in first; mongo_easy keeps working offline until then.',
+        hint: 'Sign in first; mongobase keeps working offline until then.',
       );
     }
     final uri = Uri.parse('$baseUrl/stream').replace(queryParameters: {

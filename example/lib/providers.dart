@@ -1,7 +1,7 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:mongo_easy/mongo_easy.dart';
+import 'package:mongobase/mongobase.dart';
 
-import 'mongo_easy_schema.g.dart';
+import 'mongobase_schema.g.dart';
 import 'services/auth_service.dart';
 
 /// Overridden in main() with the loaded instance.
@@ -18,7 +18,7 @@ class AuthNotifier extends Notifier<AsyncValue<String?>> {
     state = const AsyncValue.loading();
     try {
       await auth.signIn(email);
-      await MongoEasy.instance.refreshToken();
+      await Mongobase.instance.refreshToken();
       state = AsyncValue.data(auth.email);
     } on Object catch (error, stackTrace) {
       state = AsyncValue.error(error, stackTrace);
@@ -27,9 +27,9 @@ class AuthNotifier extends Notifier<AsyncValue<String?>> {
 
   Future<void> signOut() async {
     final auth = ref.read(authServiceProvider);
-    await MongoEasy.instance.clearLocalData();
+    await Mongobase.instance.clearLocalData();
     await auth.signOut();
-    await MongoEasy.instance.refreshToken();
+    await Mongobase.instance.refreshToken();
     state = const AsyncValue.data(null);
   }
 }
@@ -37,10 +37,10 @@ class AuthNotifier extends Notifier<AsyncValue<String?>> {
 final authProvider =
     NotifierProvider<AuthNotifier, AsyncValue<String?>>(AuthNotifier.new);
 
-// No hand-written model, no converter wiring — MongoEasyDb.todos is
-// generated from mongo_easy.yaml and already returns Todo.
+// No hand-written model, no converter wiring — MongobaseDb.todos is
+// generated from mongobase.yaml and already returns Todo.
 final todosCollectionProvider =
-    Provider<TypedCollection<Todo>>((ref) => MongoEasyDb.todos);
+    Provider<TypedCollection<Todo>>((ref) => MongobaseDb.todos);
 
 final todosProvider = StreamProvider.autoDispose<List<Todo>>((ref) {
   return ref
@@ -50,8 +50,8 @@ final todosProvider = StreamProvider.autoDispose<List<Todo>>((ref) {
 });
 
 final syncStatusProvider =
-    StreamProvider<SyncStatus>((ref) => MongoEasy.instance.statusStream);
+    StreamProvider<SyncStatus>((ref) => Mongobase.instance.statusStream);
 
 /// Whether the realtime channel is live, for the "live" badge.
 final realtimeProvider =
-    StreamProvider<bool>((ref) => MongoEasy.instance.realtimeState);
+    StreamProvider<bool>((ref) => Mongobase.instance.realtimeState);

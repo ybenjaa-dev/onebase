@@ -1,5 +1,5 @@
-# mongo_easy schema — the single source of truth for your collections.
-# After editing, re-run:  dart run mongo_easy:setup
+# mongobase schema — the single source of truth for your collections.
+# After editing, re-run:  dart run mongobase:setup
 #
 # Field types: text, int, double, bool, datetime, json
 # A trailing `!` marks a field required: non-nullable on the generated model

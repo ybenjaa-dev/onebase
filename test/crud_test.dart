@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mongo_easy/src/client/collection.dart';
-import 'package:mongo_easy/src/errors.dart';
-import 'package:mongo_easy/src/query/local_query_runner.dart';
-import 'package:mongo_easy/src/schema/schema.dart';
+import 'package:mongobase/src/client/collection.dart';
+import 'package:mongobase/src/errors.dart';
+import 'package:mongobase/src/query/local_query_runner.dart';
+import 'package:mongobase/src/schema/schema.dart';
 
 import 'fake_executor.dart';
 

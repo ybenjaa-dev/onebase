@@ -11,8 +11,8 @@ import 'generate_dart_schema.dart';
 import 'templates/platforms.dart';
 
 const _starterYaml = '''
-# mongo_easy schema — the single source of truth for your collections.
-# After editing, re-run:  dart run mongo_easy:setup
+# mongobase schema — the single source of truth for your collections.
+# After editing, re-run:  dart run mongobase:setup
 #
 # Field types: text, int, double, bool, datetime, json
 # Per-user collections need owner_field (filled automatically on insert).
@@ -28,7 +28,7 @@ collections:
       owner_id: text
 ''';
 
-/// Everything `dart run mongo_easy:setup` generates, before touching disk.
+/// Everything `dart run mongobase:setup` generates, before touching disk.
 class SetupOutput {
   SetupOutput(this.files);
 
@@ -37,9 +37,9 @@ class SetupOutput {
 }
 
 /// Assembles all generated files for [schema]. Pure — used by tests.
-SetupOutput buildSetupFiles(MongoEasySchema schema) {
+SetupOutput buildSetupFiles(MongobaseSchema schema) {
   final files = <String, String>{
-    'lib/mongo_easy_schema.g.dart': generateDartSchema(schema),
+    'lib/mongobase_schema.g.dart': generateDartSchema(schema),
   };
   generateBackendFiles(schema).forEach((path, content) {
     files['backend/$path'] = content;
@@ -47,18 +47,18 @@ SetupOutput buildSetupFiles(MongoEasySchema schema) {
   return SetupOutput(files);
 }
 
-/// Entry point for `dart run mongo_easy:setup`.
+/// Entry point for `dart run mongobase:setup`.
 Future<int> runSetup(List<String> arguments, {StringSink? output}) async {
   final out = output ?? stdout;
   final parser = ArgParser()
     ..addOption('schema',
         abbr: 's',
-        defaultsTo: 'mongo_easy.yaml',
+        defaultsTo: 'mongobase.yaml',
         help: 'Path to the schema file.')
     ..addOption('out',
         abbr: 'o', defaultsTo: '.', help: 'Project root to write into.')
     ..addFlag('init',
-        negatable: false, help: 'Create a starter mongo_easy.yaml and exit.')
+        negatable: false, help: 'Create a starter mongobase.yaml and exit.')
     ..addFlag('doctor',
         negatable: false,
         help: 'Diagnose the project: schema drift, backend configuration, '
@@ -80,9 +80,9 @@ Future<int> runSetup(List<String> arguments, {StringSink? output}) async {
 
   if (args['help'] as bool) {
     out
-      ..writeln('mongo_easy setup — generates typed models, the Dart schema')
-      ..writeln('and your backend from mongo_easy.yaml.\n')
-      ..writeln('  --init     create a starter mongo_easy.yaml')
+      ..writeln('mongobase setup — generates typed models, the Dart schema')
+      ..writeln('and your backend from mongobase.yaml.\n')
+      ..writeln('  --init     create a starter mongobase.yaml')
       ..writeln('  --doctor   diagnose an existing project\n')
       ..writeln(parser.usage);
     return 0;
@@ -108,14 +108,14 @@ Future<int> runSetup(List<String> arguments, {StringSink? output}) async {
   if (!file.existsSync()) {
     out
       ..writeln('No schema found at $schemaPath.')
-      ..writeln('Create one with:  dart run mongo_easy:setup --init');
+      ..writeln('Create one with:  dart run mongobase:setup --init');
     return 66;
   }
 
-  final MongoEasySchema schema;
+  final MongobaseSchema schema;
   try {
     schema = parseSchemaYaml(file.readAsStringSync());
-  } on MongoEasyException catch (error) {
+  } on MongobaseException catch (error) {
     out.writeln(error.toString());
     return 65;
   }
@@ -151,11 +151,11 @@ int _init(String schemaPath, StringSink out, {required bool force}) {
     ..writeln('✓ Created $schemaPath')
     ..writeln()
     ..writeln('Edit it to describe your collections, then run:')
-    ..writeln('  dart run mongo_easy:setup');
+    ..writeln('  dart run mongobase:setup');
   return 0;
 }
 
-void _printNextSteps(StringSink out, MongoEasySchema schema) {
+void _printNextSteps(StringSink out, MongobaseSchema schema) {
   final collections = schema.collections.keys.join(', ');
   out
     ..writeln()
@@ -172,10 +172,10 @@ void _printNextSteps(StringSink out, MongoEasySchema schema) {
     ..writeln('         --env-file .env my-backend')
     ..writeln('   …or `npx vercel deploy --prod` — the adapter is included.')
     ..writeln('3. Point your app at it:')
-    ..writeln('       await MongoEasy.init(MongoEasyConfig(')
+    ..writeln('       await Mongobase.init(MongobaseConfig(')
     ..writeln("         apiUrl: 'https://<your-backend>',")
     ..writeln('         tokenProvider: TokenProvider(() async => /* JWT */),')
-    ..writeln('         schema: mongoEasySchema,')
+    ..writeln('         schema: mongobaseSchema,')
     ..writeln('       ));')
     ..writeln()
     ..writeln('See backend/README.md for the full configuration table.');

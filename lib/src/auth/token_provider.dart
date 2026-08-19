@@ -1,6 +1,6 @@
 /// Supplies the JWT the sync engine sends on every backend request.
 ///
-/// mongo_easy is auth-provider-agnostic: wrap whatever issues your JWTs.
+/// mongobase is auth-provider-agnostic: wrap whatever issues your JWTs.
 ///
 /// ```dart
 /// // Supabase Auth
@@ -14,7 +14,7 @@
 /// TokenProvider(() async => myAuthService.jwt);
 /// ```
 ///
-/// Return `null` while the user is signed out — mongo_easy keeps working
+/// Return `null` while the user is signed out — mongobase keeps working
 /// against local data and starts syncing once a token appears.
 class TokenProvider {
   const TokenProvider(this._fetch);

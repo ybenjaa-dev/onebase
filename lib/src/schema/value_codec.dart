@@ -71,8 +71,8 @@ abstract final class ValueCodec {
     throw QueryException(
       'Field "$field" on "$collection" is declared ${type.yamlName} but got '
       '${value.runtimeType} ($value).',
-      hint: 'Fix the value or change the field type in mongo_easy.yaml and '
-          're-run `dart run mongo_easy:setup`.',
+      hint: 'Fix the value or change the field type in mongobase.yaml and '
+          're-run `dart run mongobase:setup`.',
     );
   }
 }

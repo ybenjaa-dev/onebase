@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mongo_easy/src/auth/jwt_utils.dart';
-import 'package:mongo_easy/src/errors.dart';
+import 'package:mongobase/src/auth/jwt_utils.dart';
+import 'package:mongobase/src/errors.dart';
 
 String _fakeJwt(Map<String, Object?> payload) {
   String segment(Map<String, Object?> json) =>

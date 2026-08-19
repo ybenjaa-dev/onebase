@@ -4,14 +4,14 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:mongo_easy/src/auth/token_provider.dart';
-import 'package:mongo_easy/src/client/collection.dart';
-import 'package:mongo_easy/src/client/remote_writer.dart';
-import 'package:mongo_easy/src/errors.dart';
-import 'package:mongo_easy/src/query/query_spec.dart';
-import 'package:mongo_easy/src/query/remote_query_runner.dart';
-import 'package:mongo_easy/src/schema/schema.dart';
-import 'package:mongo_easy/src/sync/sync_api.dart';
+import 'package:mongobase/src/auth/token_provider.dart';
+import 'package:mongobase/src/client/collection.dart';
+import 'package:mongobase/src/client/remote_writer.dart';
+import 'package:mongobase/src/errors.dart';
+import 'package:mongobase/src/query/query_spec.dart';
+import 'package:mongobase/src/query/remote_query_runner.dart';
+import 'package:mongobase/src/schema/schema.dart';
+import 'package:mongobase/src/sync/sync_api.dart';
 
 void main() {
   final schema = MongoCollectionSchema(

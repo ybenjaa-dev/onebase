@@ -1,5 +1,5 @@
 {
-  "name": "mongo-easy-backend",
+  "name": "mongobase-backend",
   "private": true,
   "type": "module",
   "scripts": {

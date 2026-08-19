@@ -1,5 +1,5 @@
-name: mongo_easy_example
-description: Todo app showcasing mongo_easy — login, per-user data, offline mode, realtime sync.
+name: mongobase_example
+description: Todo app showcasing mongobase — login, per-user data, offline mode, realtime sync.
 publish_to: none
 version: 1.0.0
 
@@ -10,7 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  mongo_easy:
+  mongobase:
     path: ../
   hooks_riverpod: ^3.0.0
   flutter_hooks: ^0.21.0

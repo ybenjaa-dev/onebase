@@ -119,7 +119,7 @@ class MongoCollection {
   /// A typed view over this collection using your model's `fromJson`/`toJson`.
   ///
   /// ```dart
-  /// final todos = MongoEasy.collection('todos').withConverter<Todo>(
+  /// final todos = Mongobase.collection('todos').withConverter<Todo>(
   ///   fromJson: Todo.fromJson,
   ///   toJson: (todo) => todo.toJson(),
   /// );

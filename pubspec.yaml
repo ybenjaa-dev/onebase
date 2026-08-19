@@ -1,15 +1,15 @@
-name: mongo_easy
+name: mongobase
 description: >-
-  Firebase-like developer experience for MongoDB in Flutter. Offline-first
-  reactive collections, one tiny generated backend, no third-party sync service.
+  Firebase for MongoDB in Flutter: offline-first reactive collections, realtime
+  sync and file storage, from one package and one tiny generated backend.
 version: 0.3.0
-repository: https://github.com/soft2scale/mongo_easy
+repository: https://github.com/soft2scale/mongobase
 topics:
   - mongodb
   - offline-first
   - sync
-  - flutter
-  - database
+  - realtime
+  - backend
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

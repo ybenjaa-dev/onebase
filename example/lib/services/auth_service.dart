@@ -7,10 +7,10 @@ import '../config.dart';
 
 /// Dev-token auth against the generated `/token` endpoint. In a real app,
 /// replace this with your auth provider (Supabase, Firebase, Auth0, ...) and
-/// point mongo_easy's TokenProvider at its access token.
+/// point mongobase's TokenProvider at its access token.
 class AuthService {
-  static const _tokenKey = 'mongo_easy_example.token';
-  static const _emailKey = 'mongo_easy_example.email';
+  static const _tokenKey = 'mongobase_example.token';
+  static const _emailKey = 'mongobase_example.email';
 
   String? token;
   String? email;
