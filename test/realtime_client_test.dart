@@ -39,10 +39,7 @@ void main() {
   }
 
   String frame(String collection, Map<String, Object?> document) =>
-      'data: ${jsonEncode({
-            'collection': collection,
-            'document': document
-          })}\n\n';
+      'data: ${jsonEncode({'collection': collection, 'document': document})}\n\n';
 
   test('subscribes with the token and the requested collections', () async {
     final client = RealtimeClient(

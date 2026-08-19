@@ -35,7 +35,8 @@ JwtClaims decodeJwt(String token) {
     throw InvalidTokenException(
       'Token is not a JWT (expected 3 dot-separated segments, '
       'got ${parts.length}).',
-      hint: 'Your TokenProvider must return the raw JWT string from your auth '
+      hint:
+          'Your TokenProvider must return the raw JWT string from your auth '
           'provider (e.g. the Supabase access token), not a session object '
           'or an API key.',
     );
@@ -44,12 +45,14 @@ JwtClaims decodeJwt(String token) {
   final Map<String, Object?> payload;
   try {
     final normalized = base64Url.normalize(parts[1]);
-    payload = jsonDecode(utf8.decode(base64Url.decode(normalized)))
-        as Map<String, Object?>;
+    payload =
+        jsonDecode(utf8.decode(base64Url.decode(normalized)))
+            as Map<String, Object?>;
   } on Object {
     throw const InvalidTokenException(
       'Could not decode the JWT payload.',
-      hint: 'The token appears corrupted. Check that your TokenProvider '
+      hint:
+          'The token appears corrupted. Check that your TokenProvider '
           'returns it unmodified.',
     );
   }
@@ -58,7 +61,8 @@ JwtClaims decodeJwt(String token) {
   if (subject is! String || subject.isEmpty) {
     throw const InvalidTokenException(
       'JWT has no "sub" claim.',
-      hint: 'onebase identifies users by the `sub` claim. Configure your '
+      hint:
+          'onebase identifies users by the `sub` claim. Configure your '
           'auth provider (or token endpoint) to include it.',
     );
   }
@@ -66,8 +70,10 @@ JwtClaims decodeJwt(String token) {
   DateTime? expiresAt;
   final exp = payload['exp'];
   if (exp is num) {
-    expiresAt =
-        DateTime.fromMillisecondsSinceEpoch(exp.toInt() * 1000, isUtc: true);
+    expiresAt = DateTime.fromMillisecondsSinceEpoch(
+      exp.toInt() * 1000,
+      isUtc: true,
+    );
   }
 
   final aud = payload['aud'];

@@ -31,10 +31,10 @@ class RealtimeClient {
     required List<String> collections,
     Duration retryDelay = const Duration(seconds: 2),
     Duration maxRetryDelay = const Duration(minutes: 2),
-  })  : _api = api,
-        _collections = collections,
-        _retryDelay = retryDelay,
-        _maxRetryDelay = maxRetryDelay;
+  }) : _api = api,
+       _collections = collections,
+       _retryDelay = retryDelay,
+       _maxRetryDelay = maxRetryDelay;
 
   final SyncApi _api;
   final List<String> _collections;
@@ -91,20 +91,20 @@ class RealtimeClient {
           .transform(utf8.decoder)
           .transform(const LineSplitter())
           .listen(
-        (line) {
-          if (line.isEmpty) {
-            _emitFrame(buffer.toString());
-            buffer.clear();
-            return;
-          }
-          if (line.startsWith('data:')) {
-            buffer.write(line.substring(5).trim());
-          }
-        },
-        onDone: _scheduleReconnect,
-        onError: (Object _) => _scheduleReconnect(),
-        cancelOnError: true,
-      );
+            (line) {
+              if (line.isEmpty) {
+                _emitFrame(buffer.toString());
+                buffer.clear();
+                return;
+              }
+              if (line.startsWith('data:')) {
+                buffer.write(line.substring(5).trim());
+              }
+            },
+            onDone: _scheduleReconnect,
+            onError: (Object _) => _scheduleReconnect(),
+            cancelOnError: true,
+          );
     } on Object {
       _scheduleReconnect();
     }

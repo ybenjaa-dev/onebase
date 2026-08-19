@@ -76,7 +76,8 @@ class SyncApi {
     if (response.statusCode == 401 || response.statusCode == 403) {
       throw UploadException(
         'Backend rejected the token (HTTP ${response.statusCode}).',
-        hint: 'The backend must verify the same JWTs your app sends. Check '
+        hint:
+            'The backend must verify the same JWTs your app sends. Check '
             'AUTH_MODE / JWT_SECRET / JWKS_URL on the deployment.',
         statusCode: response.statusCode,
       );
@@ -85,7 +86,8 @@ class SyncApi {
       throw UploadException(
         'Backend returned HTTP ${response.statusCode}: '
         '${_snippet(response.body)}',
-        hint: 'Transient failures retry automatically; check the backend '
+        hint:
+            'Transient failures retry automatically; check the backend '
             'logs if this persists.',
         statusCode: response.statusCode,
       );
@@ -168,9 +170,11 @@ class SyncApi {
         hint: 'Sign in first; onebase keeps working offline until then.',
       );
     }
-    final uri = Uri.parse('$baseUrl/stream').replace(queryParameters: {
-      if (collections.isNotEmpty) 'collections': collections.join(','),
-    });
+    final uri = Uri.parse('$baseUrl/stream').replace(
+      queryParameters: {
+        if (collections.isNotEmpty) 'collections': collections.join(','),
+      },
+    );
     final request = http.Request('GET', uri)
       ..headers['Authorization'] = 'Bearer $token'
       ..headers['Accept'] = 'text/event-stream'
@@ -180,8 +184,9 @@ class SyncApi {
 
   /// POSTs to a storage route and returns the decoded body.
   Future<Map<String, Object?>> storage(
-          String route, Map<String, Object?> body) =>
-      _post('/storage/$route', body);
+    String route,
+    Map<String, Object?> body,
+  ) => _post('/storage/$route', body);
 
   /// Uploads bytes straight to the object store with a presigned URL.
   ///
@@ -205,7 +210,8 @@ class SyncApi {
       throw StorageException(
         'The object store rejected the upload '
         '(HTTP ${response.statusCode}): ${_snippet(response.body)}',
-        hint: 'Check the bucket credentials and CORS rules on your storage '
+        hint:
+            'Check the bucket credentials and CORS rules on your storage '
             'provider.',
       );
     }

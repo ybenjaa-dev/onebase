@@ -40,9 +40,12 @@ void main() {
   }
 
   Diagnosis findingFor(List<Diagnosis> findings, String fragment) =>
-      findings.firstWhere((f) => f.title.contains(fragment),
-          orElse: () => throw StateError(
-              'no finding matching "$fragment" in ${findings.map((f) => f.title)}'));
+      findings.firstWhere(
+        (f) => f.title.contains(fragment),
+        orElse: () => throw StateError(
+          'no finding matching "$fragment" in ${findings.map((f) => f.title)}',
+        ),
+      );
 
   bool hasError(List<Diagnosis> findings) =>
       findings.any((f) => f.level == DiagnosisLevel.error);
@@ -60,19 +63,24 @@ void main() {
     expect(findings.single.title, contains('does not parse'));
   });
 
-  test('a freshly generated project is clean apart from the dev warning',
-      () async {
-    scaffold();
-    write('backend/.env', '''
+  test(
+    'a freshly generated project is clean apart from the dev warning',
+    () async {
+      scaffold();
+      write('backend/.env', '''
 MONGO_URI=mongodb://x
 MONGO_DB=app
 AUTH_MODE=hs256
 JWT_SECRET=${'x' * 40}
 ''');
-    final findings = await diagnose(root: root.path);
-    expect(hasError(findings), isFalse,
-        reason: findings.map((f) => f.title).join(', '));
-  });
+      final findings = await diagnose(root: root.path);
+      expect(
+        hasError(findings),
+        isFalse,
+        reason: findings.map((f) => f.title).join(', '),
+      );
+    },
+  );
 
   group('drift', () {
     test('catches a stale generated Dart schema', () async {
@@ -94,7 +102,8 @@ $_yaml
       owner_id: text
 ''');
       final schema = parseSchemaYaml(
-          File(p.join(root.path, 'onebase.yaml')).readAsStringSync());
+        File(p.join(root.path, 'onebase.yaml')).readAsStringSync(),
+      );
       write('lib/onebase_schema.g.dart', generateDartSchema(schema));
 
       final findings = await diagnose(root: root.path);
@@ -105,11 +114,15 @@ $_yaml
 
     test('reports a missing backend', () async {
       write('onebase.yaml', _yaml);
-      write('lib/onebase_schema.g.dart',
-          generateDartSchema(parseSchemaYaml(_yaml)));
+      write(
+        'lib/onebase_schema.g.dart',
+        generateDartSchema(parseSchemaYaml(_yaml)),
+      );
       final findings = await diagnose(root: root.path);
-      expect(findingFor(findings, 'core.ts is missing').level,
-          DiagnosisLevel.error);
+      expect(
+        findingFor(findings, 'core.ts is missing').level,
+        DiagnosisLevel.error,
+      );
     });
   });
 
@@ -122,13 +135,16 @@ $_yaml
 
     test('missing AUTH_MODE is an error, not a default', () async {
       final findings = await withEnv('MONGO_URI=x\nMONGO_DB=y\n');
-      expect(findingFor(findings, 'AUTH_MODE is not set').level,
-          DiagnosisLevel.error);
+      expect(
+        findingFor(findings, 'AUTH_MODE is not set').level,
+        DiagnosisLevel.error,
+      );
     });
 
     test('dev mode is flagged as unsafe for real users', () async {
       final findings = await withEnv(
-          'MONGO_URI=x\nMONGO_DB=y\nAUTH_MODE=dev\nJWT_SECRET=${'x' * 40}\n');
+        'MONGO_URI=x\nMONGO_DB=y\nAUTH_MODE=dev\nJWT_SECRET=${'x' * 40}\n',
+      );
       final dev = findingFor(findings, 'AUTH_MODE=dev');
       expect(dev.level, DiagnosisLevel.warning);
       expect(dev.detail, contains('any email'));
@@ -136,16 +152,22 @@ $_yaml
 
     test('a short secret is rejected', () async {
       final findings = await withEnv(
-          'MONGO_URI=x\nMONGO_DB=y\nAUTH_MODE=hs256\nJWT_SECRET=short\n');
-      expect(findingFor(findings, 'JWT_SECRET is too short').level,
-          DiagnosisLevel.error);
+        'MONGO_URI=x\nMONGO_DB=y\nAUTH_MODE=hs256\nJWT_SECRET=short\n',
+      );
+      expect(
+        findingFor(findings, 'JWT_SECRET is too short').level,
+        DiagnosisLevel.error,
+      );
     });
 
     test('jwks without an audience is rejected', () async {
       final findings = await withEnv(
-          'MONGO_URI=x\nMONGO_DB=y\nAUTH_MODE=jwks\nJWKS_URL=https://x/j\n');
-      expect(findingFor(findings, 'needs JWT_AUDIENCE').level,
-          DiagnosisLevel.error);
+        'MONGO_URI=x\nMONGO_DB=y\nAUTH_MODE=jwks\nJWKS_URL=https://x/j\n',
+      );
+      expect(
+        findingFor(findings, 'needs JWT_AUDIENCE').level,
+        DiagnosisLevel.error,
+      );
     });
 
     test('comments and blank lines are ignored', () async {
@@ -160,13 +182,17 @@ JWT_SECRET=${'x' * 40}
       expect(hasError(findings), isFalse);
     });
 
-    test('a missing .env is a warning, since hosts set vars themselves',
-        () async {
-      scaffold();
-      final findings = await diagnose(root: root.path);
-      expect(
-          findingFor(findings, '.env not found').level, DiagnosisLevel.warning);
-    });
+    test(
+      'a missing .env is a warning, since hosts set vars themselves',
+      () async {
+        scaffold();
+        final findings = await diagnose(root: root.path);
+        expect(
+          findingFor(findings, '.env not found').level,
+          DiagnosisLevel.warning,
+        );
+      },
+    );
   });
 
   group('reachability', () {
@@ -216,8 +242,10 @@ JWT_SECRET=${'x' * 40}
         apiUrl: 'https://api.test',
         fetch: (_) async => '<html>not found</html>',
       );
-      expect(findingFor(findings, 'not with the expected').level,
-          DiagnosisLevel.warning);
+      expect(
+        findingFor(findings, 'not with the expected').level,
+        DiagnosisLevel.warning,
+      );
     });
   });
 

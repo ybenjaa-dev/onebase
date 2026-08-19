@@ -59,19 +59,36 @@ SetupOutput buildSetupFiles(OnebaseSchema schema) {
 Future<int> runSetup(List<String> arguments, {StringSink? output}) async {
   final out = output ?? stdout;
   final parser = ArgParser()
-    ..addOption('schema',
-        abbr: 's', defaultsTo: 'onebase.yaml', help: 'Path to the schema file.')
-    ..addOption('out',
-        abbr: 'o', defaultsTo: '.', help: 'Project root to write into.')
-    ..addFlag('init',
-        negatable: false, help: 'Create a starter onebase.yaml and exit.')
-    ..addFlag('doctor',
-        negatable: false,
-        help: 'Diagnose the project: schema drift, backend configuration, '
-            'and (with --api-url) whether the backend answers.')
+    ..addOption(
+      'schema',
+      abbr: 's',
+      defaultsTo: 'onebase.yaml',
+      help: 'Path to the schema file.',
+    )
+    ..addOption(
+      'out',
+      abbr: 'o',
+      defaultsTo: '.',
+      help: 'Project root to write into.',
+    )
+    ..addFlag(
+      'init',
+      negatable: false,
+      help: 'Create a starter onebase.yaml and exit.',
+    )
+    ..addFlag(
+      'doctor',
+      negatable: false,
+      help:
+          'Diagnose the project: schema drift, backend configuration, '
+          'and (with --api-url) whether the backend answers.',
+    )
     ..addOption('api-url', help: '[--doctor] Backend root URL to health-check.')
-    ..addFlag('force',
-        negatable: false, help: 'Overwrite existing generated files.')
+    ..addFlag(
+      'force',
+      negatable: false,
+      help: 'Overwrite existing generated files.',
+    )
     ..addFlag('help', abbr: 'h', negatable: false);
 
   final ArgResults args;
@@ -174,7 +191,8 @@ void _printNextSteps(StringSink out, OnebaseSchema schema) {
     ..writeln('   use dev to start, jwks or hs256 for production).')
     ..writeln('2. Deploy it anywhere Node or Docker runs:')
     ..writeln(
-        '       docker build -t my-backend . && docker run -p 3000:3000 \\')
+      '       docker build -t my-backend . && docker run -p 3000:3000 \\',
+    )
     ..writeln('         --env-file .env my-backend')
     ..writeln('   …or `npx vercel deploy --prod` — the adapter is included.')
     ..writeln('3. Point your app at it:')

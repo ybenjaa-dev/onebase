@@ -15,13 +15,17 @@ class LocalWriter implements DocumentWriter {
 
   @override
   Future<void> insert(
-          String collection, String id, Map<String, Object?> encoded) =>
-      _store.insert(collection, id, encoded, transactionId: _uuid.v4());
+    String collection,
+    String id,
+    Map<String, Object?> encoded,
+  ) => _store.insert(collection, id, encoded, transactionId: _uuid.v4());
 
   @override
   Future<void> update(
-          String collection, String id, Map<String, Object?> encoded) =>
-      _store.update(collection, id, encoded, transactionId: _uuid.v4());
+    String collection,
+    String id,
+    Map<String, Object?> encoded,
+  ) => _store.update(collection, id, encoded, transactionId: _uuid.v4());
 
   @override
   Future<void> delete(String collection, String id) =>

@@ -50,28 +50,42 @@ void main() {
     });
 
     test('comparison operators', () {
-      expect(query().where('priority', isGreaterThan: 2).compile().sql,
-          contains('"priority" > ?'));
-      expect(query().where('priority', isGreaterThanOrEqualTo: 2).compile().sql,
-          contains('"priority" >= ?'));
-      expect(query().where('priority', isLessThanOrEqualTo: 2).compile().sql,
-          contains('"priority" <= ?'));
-      expect(query().where('priority', isNotEqualTo: 2).compile().sql,
-          contains('"priority" != ?'));
+      expect(
+        query().where('priority', isGreaterThan: 2).compile().sql,
+        contains('"priority" > ?'),
+      );
+      expect(
+        query().where('priority', isGreaterThanOrEqualTo: 2).compile().sql,
+        contains('"priority" >= ?'),
+      );
+      expect(
+        query().where('priority', isLessThanOrEqualTo: 2).compile().sql,
+        contains('"priority" <= ?'),
+      );
+      expect(
+        query().where('priority', isNotEqualTo: 2).compile().sql,
+        contains('"priority" != ?'),
+      );
     });
 
     test('whereIn expands placeholders', () {
       final compiled = query().where('priority', whereIn: [1, 2, 3]).compile();
       expect(
-          compiled.sql, 'SELECT * FROM "todos" WHERE "priority" IN (?, ?, ?)');
+        compiled.sql,
+        'SELECT * FROM "todos" WHERE "priority" IN (?, ?, ?)',
+      );
       expect(compiled.parameters, [1, 2, 3]);
     });
 
     test('isNull true and false', () {
-      expect(query().where('due_at', isNull: true).compile().sql,
-          contains('"due_at" IS NULL'));
-      expect(query().where('due_at', isNull: false).compile().sql,
-          contains('"due_at" IS NOT NULL'));
+      expect(
+        query().where('due_at', isNull: true).compile().sql,
+        contains('"due_at" IS NULL'),
+      );
+      expect(
+        query().where('due_at', isNull: false).compile().sql,
+        contains('"due_at" IS NOT NULL'),
+      );
     });
 
     test('chained wheres combine with AND', () {
@@ -79,8 +93,10 @@ void main() {
           .where('done', isEqualTo: false)
           .where('priority', isGreaterThan: 1)
           .compile();
-      expect(compiled.sql,
-          'SELECT * FROM "todos" WHERE "done" = ? AND "priority" > ?');
+      expect(
+        compiled.sql,
+        'SELECT * FROM "todos" WHERE "done" = ? AND "priority" > ?',
+      );
       expect(compiled.parameters, [0, 1]);
     });
 
@@ -92,9 +108,10 @@ void main() {
           .offset(20)
           .compile();
       expect(
-          compiled.sql,
-          'SELECT * FROM "todos" ORDER BY "due_at" DESC, "title" ASC '
-          'LIMIT ? OFFSET ?');
+        compiled.sql,
+        'SELECT * FROM "todos" ORDER BY "due_at" DESC, "title" ASC '
+        'LIMIT ? OFFSET ?',
+      );
       expect(compiled.parameters, [10, 20]);
     });
 
@@ -111,23 +128,28 @@ void main() {
           .limit(5)
           .compile(count: true);
       expect(
-          compiled.sql, 'SELECT COUNT(*) AS c FROM "todos" WHERE "done" = ?');
+        compiled.sql,
+        'SELECT COUNT(*) AS c FROM "todos" WHERE "done" = ?',
+      );
       expect(compiled.parameters, [1]);
     });
 
     test('dot-path on json field compiles to json_extract', () {
-      final compiled =
-          query().where('meta.tags.primary', isEqualTo: 'work').compile();
+      final compiled = query()
+          .where('meta.tags.primary', isEqualTo: 'work')
+          .compile();
       expect(
-          compiled.sql,
-          'SELECT * FROM "todos" WHERE '
-          "json_extract(\"meta\", '\$.tags.primary') = ?");
+        compiled.sql,
+        'SELECT * FROM "todos" WHERE '
+        "json_extract(\"meta\", '\$.tags.primary') = ?",
+      );
       expect(compiled.parameters, ['work']);
     });
 
     test('dot-path bool encodes as json scalar 0/1', () {
-      final compiled =
-          query().where('meta.archived', isEqualTo: true).compile();
+      final compiled = query()
+          .where('meta.archived', isEqualTo: true)
+          .compile();
       expect(compiled.parameters, [1]);
     });
   });
@@ -136,8 +158,13 @@ void main() {
     test('unknown field throws with declared fields listed', () {
       expect(
         () => query().where('titel', isEqualTo: 'x').compile(),
-        throwsA(isA<UnknownFieldException>()
-            .having((e) => e.hint, 'hint', contains('title'))),
+        throwsA(
+          isA<UnknownFieldException>().having(
+            (e) => e.hint,
+            'hint',
+            contains('title'),
+          ),
+        ),
       );
     });
 
@@ -211,16 +238,17 @@ void main() {
             'score': 3,
           },
         ];
-      final results = await MongoQuery(LocalQueryRunner(executor), schema)
-          .where('done', isEqualTo: true)
-          .find();
+      final results = await MongoQuery(
+        LocalQueryRunner(executor),
+        schema,
+      ).where('done', isEqualTo: true).find();
 
       expect(results, hasLength(1));
       final doc = results.single;
       expect(doc['done'], true);
       expect(doc['due_at'], DateTime.utc(2026, 7, 2, 12));
       expect(doc['meta'], {
-        'tags': ['home']
+        'tags': ['home'],
       });
       expect(doc['score'], 3.0);
       expect(doc['id'], 'a');
@@ -228,15 +256,17 @@ void main() {
 
     test('findOne returns null on empty result', () async {
       final executor = FakeExecutor();
-      expect(await MongoQuery(LocalQueryRunner(executor), schema).findOne(),
-          isNull);
+      expect(
+        await MongoQuery(LocalQueryRunner(executor), schema).findOne(),
+        isNull,
+      );
       expect(executor.lastCall.sql, endsWith('LIMIT ?'));
     });
 
     test('count reads the aggregate', () async {
       final executor = FakeExecutor()
         ..rows = [
-          {'c': 42}
+          {'c': 42},
         ];
       expect(await MongoQuery(LocalQueryRunner(executor), schema).count(), 42);
     });
@@ -246,8 +276,10 @@ void main() {
         ..rows = [
           {'id': 'a', 'done': 0},
         ];
-      final emission =
-          await MongoQuery(LocalQueryRunner(executor), schema).watch().first;
+      final emission = await MongoQuery(
+        LocalQueryRunner(executor),
+        schema,
+      ).watch().first;
       expect(emission.single['done'], false);
     });
   });

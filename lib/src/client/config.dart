@@ -94,15 +94,19 @@ class OnebaseConfig {
   List<String> get subscribedCollections =>
       (realtimeCollections ?? schema.collections.keys.toSet()).toList()..sort();
 
-  static void _validateUrl(String value, String field,
-      {required String example}) {
+  static void _validateUrl(
+    String value,
+    String field, {
+    required String example,
+  }) {
     final uri = Uri.tryParse(value);
     final isHttp =
         uri != null && (uri.isScheme('https') || uri.isScheme('http'));
     if (!isHttp || uri.host.isEmpty) {
       throw ConfigurationException(
         '$field is not a valid URL: "$value".',
-        hint: 'Expected something like $example. '
+        hint:
+            'Expected something like $example. '
             'Run `dart run onebase:setup` to configure the project.',
       );
     }
@@ -118,7 +122,8 @@ class OnebaseConfig {
         uri.host != '10.0.2.2') {
       throw ConfigurationException(
         '$field uses plain http on a non-local host: "$value".',
-        hint: 'Use https for anything other than localhost / the Android '
+        hint:
+            'Use https for anything other than localhost / the Android '
             'emulator host (10.0.2.2).',
       );
     }

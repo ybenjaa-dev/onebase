@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0
+
+Drops the `sqlite3_flutter_libs` dependency, which its author has discontinued
+("not used anymore, update to version 3.x of package:sqlite3"). The native
+SQLite library now arrives through `sqlite3` itself, verified by inspecting a
+built macOS app bundle for `sqlite3.framework`.
+
+**Breaking:** this raises the floor to Dart 3.10 / Flutter 3.38, because that
+is where `sqlite3` ships its own natives. On an older Flutter, stay on 0.1.0.
+
 ## 0.1.0
 
 First release.

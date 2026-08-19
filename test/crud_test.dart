@@ -94,12 +94,16 @@ void main() {
 
     test('rejects empty changes', () {
       expect(
-          () => collection().update('abc', {}), throwsA(isA<QueryException>()));
+        () => collection().update('abc', {}),
+        throwsA(isA<QueryException>()),
+      );
     });
 
     test('rejects unknown fields', () {
-      expect(() => collection().update('abc', {'ghost': 1}),
-          throwsA(isA<UnknownFieldException>()));
+      expect(
+        () => collection().update('abc', {'ghost': 1}),
+        throwsA(isA<UnknownFieldException>()),
+      );
     });
   });
 
@@ -129,23 +133,25 @@ void main() {
   });
 
   group('withConverter', () {
-    test('round-trips through fromJson/toJson and strips id on insert',
-        () async {
-      final typed = collection().withConverter<_Todo>(
-        fromJson: _Todo.fromJson,
-        toJson: (todo) => todo.toJson(),
-      );
+    test(
+      'round-trips through fromJson/toJson and strips id on insert',
+      () async {
+        final typed = collection().withConverter<_Todo>(
+          fromJson: _Todo.fromJson,
+          toJson: (todo) => todo.toJson(),
+        );
 
-      await typed.insert(const _Todo(id: 'ignored', title: 'a', done: false));
-      expect(writer.lastWrite.id, 'generated-id');
-      expect(writer.lastWrite.data, isNot(contains('id')));
+        await typed.insert(const _Todo(id: 'ignored', title: 'a', done: false));
+        expect(writer.lastWrite.id, 'generated-id');
+        expect(writer.lastWrite.data, isNot(contains('id')));
 
-      executor.rows = [
-        {'id': 'abc', 'title': 'a', 'done': 1},
-      ];
-      final todos = await typed.find();
-      expect(todos.single, const _Todo(id: 'abc', title: 'a', done: true));
-    });
+        executor.rows = [
+          {'id': 'abc', 'title': 'a', 'done': 1},
+        ];
+        final todos = await typed.find();
+        expect(todos.single, const _Todo(id: 'abc', title: 'a', done: true));
+      },
+    );
 
     test('typed queries chain and decode', () async {
       final typed = collection().withConverter<_Todo>(
@@ -161,8 +167,10 @@ void main() {
           .limit(5)
           .find();
       expect(results.single.done, false);
-      expect(executor.lastCall.sql,
-          contains('WHERE "done" = ? ORDER BY "title" ASC LIMIT ?'));
+      expect(
+        executor.lastCall.sql,
+        contains('WHERE "done" = ? ORDER BY "title" ASC LIMIT ?'),
+      );
     });
   });
 
@@ -171,8 +179,11 @@ void main() {
       final shared = MongoCollection(
         LocalQueryRunner(executor),
         writer,
-        MongoCollectionSchema('tags',
-            fields: {'name': MongoFieldType.text}, shared: true),
+        MongoCollectionSchema(
+          'tags',
+          fields: {'name': MongoFieldType.text},
+          shared: true,
+        ),
         currentUserId: () async => throw StateError('must not be called'),
         newId: () => 'id-1',
       );
@@ -187,10 +198,10 @@ class _Todo {
   const _Todo({required this.id, required this.title, required this.done});
 
   factory _Todo.fromJson(Map<String, Object?> json) => _Todo(
-        id: json['id']! as String,
-        title: json['title']! as String,
-        done: json['done']! as bool,
-      );
+    id: json['id']! as String,
+    title: json['title']! as String,
+    done: json['done']! as bool,
+  );
 
   final String id;
   final String title;

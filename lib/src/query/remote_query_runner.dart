@@ -30,7 +30,9 @@ class RemoteQueryRunner implements QueryRunner {
 
   @override
   Future<List<Map<String, Object?>>> find(
-      MongoCollectionSchema schema, QuerySpec spec) async {
+    MongoCollectionSchema schema,
+    QuerySpec spec,
+  ) async {
     final documents = await _api.query(encodeQuery(schema, spec));
     return [for (final document in documents) _decode(document, schema)];
   }
@@ -41,14 +43,18 @@ class RemoteQueryRunner implements QueryRunner {
 
   @override
   Future<Map<String, Object?>?> findById(
-      MongoCollectionSchema schema, String id) async {
+    MongoCollectionSchema schema,
+    String id,
+  ) async {
     final document = await _api.queryById(schema.name, id);
     return document == null ? null : _decode(document, schema);
   }
 
   @override
   Stream<List<Map<String, Object?>>> watch(
-      MongoCollectionSchema schema, QuerySpec spec) {
+    MongoCollectionSchema schema,
+    QuerySpec spec,
+  ) {
     final controller = StreamController<List<Map<String, Object?>>>();
     StreamSubscription<String>? changeSubscription;
     Timer? timer;
@@ -99,6 +105,7 @@ class RemoteQueryRunner implements QueryRunner {
   }
 
   Map<String, Object?> _decode(
-          Map<String, Object?> document, MongoCollectionSchema schema) =>
-      ValueCodec.decodeRow(document, schema);
+    Map<String, Object?> document,
+    MongoCollectionSchema schema,
+  ) => ValueCodec.decodeRow(document, schema);
 }

@@ -34,7 +34,9 @@ collections:
       expect(MongoCollectionSchema.modelNameFor('categories'), 'Category');
       expect(MongoCollectionSchema.modelNameFor('boxes'), 'Box');
       expect(
-          MongoCollectionSchema.modelNameFor('user_profiles'), 'UserProfile');
+        MongoCollectionSchema.modelNameFor('user_profiles'),
+        'UserProfile',
+      );
       expect(MongoCollectionSchema.modelNameFor('address'), 'Address');
     });
 
@@ -50,13 +52,15 @@ collections:
       expect(generated, contains('class Category {'));
     });
 
-    test('required fields are non-nullable and required in the constructor',
-        () {
-      expect(generated, contains('final String title;'));
-      expect(generated, contains('final bool done;'));
-      expect(generated, contains('required this.title,'));
-      expect(generated, contains('required this.done,'));
-    });
+    test(
+      'required fields are non-nullable and required in the constructor',
+      () {
+        expect(generated, contains('final String title;'));
+        expect(generated, contains('final bool done;'));
+        expect(generated, contains('required this.title,'));
+        expect(generated, contains('required this.done,'));
+      },
+    );
 
     test('optional fields are nullable and optional', () {
       expect(generated, contains('final DateTime? dueAt;'));
@@ -102,8 +106,10 @@ collections:
     test('exposes one per collection, already converted', () {
       expect(generated, contains('abstract final class OnebaseDb {'));
       expect(generated, contains('static TypedCollection<Todo> get todos =>'));
-      expect(generated,
-          contains('static TypedCollection<Category> get categories =>'));
+      expect(
+        generated,
+        contains('static TypedCollection<Category> get categories =>'),
+      );
       expect(generated, contains('fromJson: Todo.fromJson,'));
     });
   });

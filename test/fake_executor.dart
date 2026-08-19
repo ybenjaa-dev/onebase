@@ -17,28 +17,36 @@ class FakeExecutor implements SqlExecutor {
   RecordedCall get lastCall => calls.last;
 
   @override
-  Future<List<Map<String, Object?>>> getAll(String sql,
-      [List<Object?> parameters = const []]) async {
+  Future<List<Map<String, Object?>>> getAll(
+    String sql, [
+    List<Object?> parameters = const [],
+  ]) async {
     calls.add(RecordedCall(sql, parameters));
     return rows;
   }
 
   @override
-  Future<Map<String, Object?>?> getOptional(String sql,
-      [List<Object?> parameters = const []]) async {
+  Future<Map<String, Object?>?> getOptional(
+    String sql, [
+    List<Object?> parameters = const [],
+  ]) async {
     calls.add(RecordedCall(sql, parameters));
     return rows.isEmpty ? null : rows.first;
   }
 
   @override
-  Future<void> execute(String sql,
-      [List<Object?> parameters = const []]) async {
+  Future<void> execute(
+    String sql, [
+    List<Object?> parameters = const [],
+  ]) async {
     calls.add(RecordedCall(sql, parameters));
   }
 
   @override
-  Stream<List<Map<String, Object?>>> watch(String sql,
-      {List<Object?> parameters = const []}) {
+  Stream<List<Map<String, Object?>>> watch(
+    String sql, {
+    List<Object?> parameters = const [],
+  }) {
     calls.add(RecordedCall(sql, parameters));
     return Stream.value(rows);
   }
@@ -60,13 +68,19 @@ class FakeWriter implements DocumentWriter {
 
   @override
   Future<void> insert(
-      String collection, String id, Map<String, Object?> encoded) async {
+    String collection,
+    String id,
+    Map<String, Object?> encoded,
+  ) async {
     writes.add(RecordedWrite('put', collection, id, encoded));
   }
 
   @override
   Future<void> update(
-      String collection, String id, Map<String, Object?> encoded) async {
+    String collection,
+    String id,
+    Map<String, Object?> encoded,
+  ) async {
     writes.add(RecordedWrite('patch', collection, id, encoded));
   }
 

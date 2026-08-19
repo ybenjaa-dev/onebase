@@ -79,7 +79,7 @@ class StorageBucketSchema {
 /// Every storage bucket the app uses. Empty when the app stores no files.
 class StorageSchema {
   StorageSchema(List<StorageBucketSchema> buckets)
-      : buckets = {for (final bucket in buckets) bucket.name: bucket} {
+    : buckets = {for (final bucket in buckets) bucket.name: bucket} {
     if (buckets.length != this.buckets.length) {
       throw const SchemaParseException('Duplicate storage bucket names.');
     }

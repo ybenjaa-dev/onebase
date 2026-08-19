@@ -39,23 +39,22 @@ class OutboxOp {
   final Map<String, Object?>? data;
 
   Map<String, Object?> toJson() => {
-        'op': op,
-        'collection': collection,
-        'id': documentId,
-        if (data != null) 'data': data,
-      };
+    'op': op,
+    'collection': collection,
+    'id': documentId,
+    if (data != null) 'data': data,
+  };
 
   static OutboxOp fromRow(Map<String, Object?> row) => OutboxOp(
-        seq: row['seq']! as int,
-        transactionId: row['tx_id']! as String,
-        op: row['op']! as String,
-        collection: row['collection']! as String,
-        documentId: row['doc_id']! as String,
-        data: row['data'] == null
-            ? null
-            : (jsonDecode(row['data']! as String) as Map)
-                .cast<String, Object?>(),
-      );
+    seq: row['seq']! as int,
+    transactionId: row['tx_id']! as String,
+    op: row['op']! as String,
+    collection: row['collection']! as String,
+    documentId: row['doc_id']! as String,
+    data: row['data'] == null
+        ? null
+        : (jsonDecode(row['data']! as String) as Map).cast<String, Object?>(),
+  );
 }
 
 /// The local SQLite replica: every collection as a real table, plus the
@@ -92,33 +91,37 @@ CREATE TABLE IF NOT EXISTS $metaTable (
 )''');
 
       for (final collection in schema.collections.values) {
-        await tx.execute('CREATE TABLE IF NOT EXISTS "${collection.name}" ('
-            'id TEXT PRIMARY KEY NOT NULL, '
-            '"$updatedAtColumn" TEXT)');
+        await tx.execute(
+          'CREATE TABLE IF NOT EXISTS "${collection.name}" ('
+          'id TEXT PRIMARY KEY NOT NULL, '
+          '"$updatedAtColumn" TEXT)',
+        );
 
         final existing = <String>{
-          for (final row
-              in await tx.getAll('PRAGMA table_info("${collection.name}")'))
+          for (final row in await tx.getAll(
+            'PRAGMA table_info("${collection.name}")',
+          ))
             row['name']! as String,
         };
         for (final MapEntry(key: field, value: type)
             in collection.fields.entries) {
           if (existing.contains(field)) continue;
-          await tx.execute('ALTER TABLE "${collection.name}" '
-              'ADD COLUMN "$field" ${_affinity(type)}');
+          await tx.execute(
+            'ALTER TABLE "${collection.name}" '
+            'ADD COLUMN "$field" ${_affinity(type)}',
+          );
         }
       }
     });
   }
 
   static String _affinity(MongoFieldType type) => switch (type) {
-        MongoFieldType.int || MongoFieldType.bool => 'INTEGER',
-        MongoFieldType.double => 'REAL',
-        MongoFieldType.text ||
-        MongoFieldType.datetime ||
-        MongoFieldType.json =>
-          'TEXT',
-      };
+    MongoFieldType.int || MongoFieldType.bool => 'INTEGER',
+    MongoFieldType.double => 'REAL',
+    MongoFieldType.text ||
+    MongoFieldType.datetime ||
+    MongoFieldType.json => 'TEXT',
+  };
 
   // ---------------------------------------------------------------- writes
 
@@ -176,7 +179,7 @@ CREATE TABLE IF NOT EXISTS $metaTable (
         op,
         collection,
         id,
-        data == null ? null : jsonEncode(data)
+        data == null ? null : jsonEncode(data),
       ],
     );
   }
@@ -205,10 +208,10 @@ CREATE TABLE IF NOT EXISTS $metaTable (
   ) async {
     if (encoded.isEmpty) return;
     final assignments = encoded.keys.map((k) => '"$k" = ?').join(', ');
-    await tx.execute(
-      'UPDATE "$collection" SET $assignments WHERE id = ?',
-      [...encoded.values, id],
-    );
+    await tx.execute('UPDATE "$collection" SET $assignments WHERE id = ?', [
+      ...encoded.values,
+      id,
+    ]);
   }
 
   // ------------------------------------------------------------- outbox
@@ -304,10 +307,15 @@ CREATE TABLE IF NOT EXISTS $metaTable (
             await _applyPut(tx, collection, op.documentId, op.data ?? const {});
           case 'patch':
             await _applyPatch(
-                tx, collection, op.documentId, op.data ?? const {});
+              tx,
+              collection,
+              op.documentId,
+              op.data ?? const {},
+            );
           case 'delete':
-            await tx.execute(
-                'DELETE FROM "$collection" WHERE id = ?', [op.documentId]);
+            await tx.execute('DELETE FROM "$collection" WHERE id = ?', [
+              op.documentId,
+            ]);
         }
       }
     });

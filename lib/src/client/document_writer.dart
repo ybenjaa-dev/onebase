@@ -6,10 +6,16 @@
 abstract interface class DocumentWriter {
   /// Values are already encoded for storage by `ValueCodec`.
   Future<void> insert(
-      String collection, String id, Map<String, Object?> encoded);
+    String collection,
+    String id,
+    Map<String, Object?> encoded,
+  );
 
   Future<void> update(
-      String collection, String id, Map<String, Object?> encoded);
+    String collection,
+    String id,
+    Map<String, Object?> encoded,
+  );
 
   Future<void> delete(String collection, String id);
 }

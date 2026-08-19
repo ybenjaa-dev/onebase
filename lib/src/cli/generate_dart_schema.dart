@@ -27,23 +27,54 @@ String generateDartSchema(OnebaseSchema schema) {
       buffer.writeln("    ownerField: '${collection.ownerField}',");
     }
     if (collection.shared) buffer.writeln('    shared: true,');
+    final scope = collection.scope;
+    if (scope != null) {
+      buffer
+        ..writeln('    scope: const GroupScope(')
+        ..writeln("      membership: '${scope.membership}',")
+        ..writeln("      field: '${scope.field}',")
+        ..writeln('      write: GroupWrite.${scope.write.name},')
+        ..writeln('    ),');
+    }
     if (collection.requiredFields.isNotEmpty) {
-      final names =
-          collection.requiredFields.map((field) => "'$field'").join(', ');
+      final names = collection.requiredFields
+          .map((field) => "'$field'")
+          .join(', ');
       buffer.writeln('    requiredFields: {$names},');
     }
     buffer
       ..writeln("    model: '${collection.model}',")
       ..writeln('  ),');
   }
+  buffer.writeln(']');
+  if (schema.memberships.isNotEmpty) {
+    buffer.writeln('  , memberships: [');
+    for (final membership in schema.memberships.values) {
+      buffer
+        ..writeln('    MembershipSchema(')
+        ..writeln("      '${membership.name}',")
+        ..writeln("      collection: '${membership.collection}',")
+        ..writeln("      userField: '${membership.userField}',")
+        ..writeln("      groupField: '${membership.groupField}',");
+      if (membership.roleField != null) {
+        buffer.writeln("      roleField: '${membership.roleField}',");
+      }
+      buffer
+        ..writeln("      adminRole: '${membership.adminRole}',")
+        ..writeln('    ),');
+    }
+    buffer.writeln('  ]');
+  }
   buffer
-    ..writeln(']);')
+    ..writeln(');')
     ..writeln()
     ..writeln('/// Typed collections, ready to use:')
     ..writeln('///')
     ..writeln('/// ```dart')
-    ..writeln('/// final ${_firstAccessor(schema)} = '
-        'await OnebaseDb.${_firstAccessor(schema)}.find();')
+    ..writeln(
+      '/// final ${_firstAccessor(schema)} = '
+      'await OnebaseDb.${_firstAccessor(schema)}.find();',
+    )
     ..writeln('/// ```')
     ..writeln('abstract final class OnebaseDb {');
 
@@ -66,8 +97,9 @@ String generateDartSchema(OnebaseSchema schema) {
       ..write(_model(collection));
   }
 
-  final hasRequired = schema.collections.values
-      .any((collection) => collection.requiredFields.isNotEmpty);
+  final hasRequired = schema.collections.values.any(
+    (collection) => collection.requiredFields.isNotEmpty,
+  );
   if (hasRequired) buffer.write(_missingHelper);
 
   return buffer.toString();
@@ -86,9 +118,11 @@ String _model(MongoCollectionSchema collection) {
 
   for (final MapEntry(key: field, value: _) in fields) {
     final name = _dartField(field);
-    buffer.writeln(collection.isRequired(field)
-        ? '    required this.$name,'
-        : '    this.$name,');
+    buffer.writeln(
+      collection.isRequired(field)
+          ? '    required this.$name,'
+          : '    this.$name,',
+    );
   }
 
   buffer
@@ -120,8 +154,10 @@ String _model(MongoCollectionSchema collection) {
     final accessor = "json['$field']";
     final cast = _fromJsonExpression(accessor, type);
     if (collection.isRequired(field)) {
-      buffer.writeln('      ${_dartField(field)}: $cast '
-          "?? _missing('$field'),");
+      buffer.writeln(
+        '      ${_dartField(field)}: $cast '
+        "?? _missing('$field'),",
+      );
     } else {
       buffer.writeln('      ${_dartField(field)}: $cast,');
     }
@@ -137,9 +173,11 @@ String _model(MongoCollectionSchema collection) {
     ..writeln("        if (id.isNotEmpty) 'id': id,");
   for (final MapEntry(key: field, value: _) in fields) {
     final name = _dartField(field);
-    buffer.writeln(collection.isRequired(field)
-        ? "        '$field': $name,"
-        : "        if ($name != null) '$field': $name,");
+    buffer.writeln(
+      collection.isRequired(field)
+          ? "        '$field': $name,"
+          : "        if ($name != null) '$field': $name,",
+    );
   }
   buffer.writeln('      };');
 
@@ -174,7 +212,8 @@ String _model(MongoCollectionSchema collection) {
     ..writeln('      identical(this, other) ||')
     ..writeln('      other is $model &&')
     ..writeln(
-        names.map((name) => '          $name == other.$name').join(' &&\n'))
+      names.map((name) => '          $name == other.$name').join(' &&\n'),
+    )
     ..writeln(';')
     ..writeln()
     ..writeln('  @override')
@@ -199,13 +238,13 @@ String _dartField(String field) {
 }
 
 String _dartType(MongoFieldType type) => switch (type) {
-      MongoFieldType.text => 'String',
-      MongoFieldType.int => 'int',
-      MongoFieldType.double => 'double',
-      MongoFieldType.bool => 'bool',
-      MongoFieldType.datetime => 'DateTime',
-      MongoFieldType.json => 'Object',
-    };
+  MongoFieldType.text => 'String',
+  MongoFieldType.int => 'int',
+  MongoFieldType.double => 'double',
+  MongoFieldType.bool => 'bool',
+  MongoFieldType.datetime => 'DateTime',
+  MongoFieldType.json => 'Object',
+};
 
 /// onebase already decodes values by type before a model sees them, so
 /// these are plain casts — except `double`, which SQLite may hand back as an

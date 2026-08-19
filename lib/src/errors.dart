@@ -19,11 +19,12 @@ sealed class OnebaseException implements Exception {
 /// Thrown when [Onebase.instance] is accessed before [Onebase.init].
 final class NotInitializedException extends OnebaseException {
   const NotInitializedException()
-      : super(
-          'Onebase has not been initialized.',
-          hint: 'Call `await Onebase.init(OnebaseConfig(...))` before '
-              'accessing collections — typically in main() before runApp().',
-        );
+    : super(
+        'Onebase has not been initialized.',
+        hint:
+            'Call `await Onebase.init(OnebaseConfig(...))` before '
+            'accessing collections — typically in main() before runApp().',
+      );
 }
 
 /// Thrown when [OnebaseConfig] contains invalid or missing values.
@@ -34,34 +35,36 @@ final class ConfigurationException extends OnebaseException {
 /// Thrown when accessing a collection that is not declared in the schema.
 final class UnknownCollectionException extends OnebaseException {
   UnknownCollectionException(String collection, Iterable<String> known)
-      : super(
-          'Unknown collection "$collection".',
-          hint:
-              'Declared collections: ${known.isEmpty ? '(none)' : known.join(', ')}. '
-              'Add "$collection" to onebase.yaml and re-run '
-              '`dart run onebase:setup`.',
-        );
+    : super(
+        'Unknown collection "$collection".',
+        hint:
+            'Declared collections: ${known.isEmpty ? '(none)' : known.join(', ')}. '
+            'Add "$collection" to onebase.yaml and re-run '
+            '`dart run onebase:setup`.',
+      );
 }
 
 /// Thrown when a query or write references a field that is not in the schema.
 final class UnknownFieldException extends OnebaseException {
   UnknownFieldException(String field, String collection, Iterable<String> known)
-      : super(
-          'Unknown field "$field" on collection "$collection".',
-          hint: 'Declared fields: ${known.join(', ')}. '
-              'Add it to onebase.yaml and re-run '
-              '`dart run onebase:setup`, or fix the field name.',
-        );
+    : super(
+        'Unknown field "$field" on collection "$collection".',
+        hint:
+            'Declared fields: ${known.join(', ')}. '
+            'Add it to onebase.yaml and re-run '
+            '`dart run onebase:setup`, or fix the field name.',
+      );
 }
 
 /// Thrown when a field name or dot-path is not a valid identifier.
 final class InvalidFieldNameException extends OnebaseException {
   InvalidFieldNameException(String field)
-      : super(
-          'Invalid field name "$field".',
-          hint: 'Field names must match [a-zA-Z_][a-zA-Z0-9_]* and may use '
-              'dots for nested json fields (e.g. "address.city").',
-        );
+    : super(
+        'Invalid field name "$field".',
+        hint:
+            'Field names must match [a-zA-Z_][a-zA-Z0-9_]* and may use '
+            'dots for nested json fields (e.g. "address.city").',
+      );
 }
 
 /// Thrown when the auth token is missing, malformed, or expired.

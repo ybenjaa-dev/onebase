@@ -18,13 +18,17 @@ class RemoteWriter implements DocumentWriter {
 
   @override
   Future<void> insert(
-          String collection, String id, Map<String, Object?> encoded) =>
-      _send('put', collection, id, encoded);
+    String collection,
+    String id,
+    Map<String, Object?> encoded,
+  ) => _send('put', collection, id, encoded);
 
   @override
   Future<void> update(
-          String collection, String id, Map<String, Object?> encoded) =>
-      _send('patch', collection, id, encoded);
+    String collection,
+    String id,
+    Map<String, Object?> encoded,
+  ) => _send('patch', collection, id, encoded);
 
   @override
   Future<void> delete(String collection, String id) =>
@@ -51,7 +55,8 @@ class RemoteWriter implements DocumentWriter {
       final reason = result.skipped.first['reason'] ?? 'refused by the backend';
       throw UploadException(
         'The backend refused this $op on "$collection": $reason',
-        hint: 'This is a permanent refusal, not a network problem — the '
+        hint:
+            'This is a permanent refusal, not a network problem — the '
             'document is probably owned by another user, or the collection '
             'is missing from the deployed schema.',
       );

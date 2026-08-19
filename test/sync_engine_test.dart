@@ -16,10 +16,7 @@ void main() {
   final schema = OnebaseSchema([
     MongoCollectionSchema(
       'todos',
-      fields: {
-        'title': MongoFieldType.text,
-        'owner_id': MongoFieldType.text,
-      },
+      fields: {'title': MongoFieldType.text, 'owner_id': MongoFieldType.text},
       ownerField: 'owner_id',
     ),
   ]);
@@ -66,9 +63,11 @@ void main() {
     );
   }
 
-  http.Response ok(Map<String, Object?> body) =>
-      http.Response(jsonEncode(body), 200,
-          headers: {'content-type': 'application/json'});
+  http.Response ok(Map<String, Object?> body) => http.Response(
+    jsonEncode(body),
+    200,
+    headers: {'content-type': 'application/json'},
+  );
 
   SyncEngine happyEngine({List<Map<String, Object?>> documents = const []}) {
     return engineWith((request) async {
@@ -80,29 +79,35 @@ void main() {
   }
 
   group('push', () {
-    test('uploads queued writes grouped by transaction, then clears them',
-        () async {
-      await store.insert('todos', 'a', {'title': 'milk'},
-          transactionId: 'tx-1');
-      await store.update('todos', 'a', {'title': 'bread'},
-          transactionId: 'tx-1');
-      await store.insert('todos', 'b', {'title': 'eggs'},
-          transactionId: 'tx-2');
+    test(
+      'uploads queued writes grouped by transaction, then clears them',
+      () async {
+        await store.insert('todos', 'a', {
+          'title': 'milk',
+        }, transactionId: 'tx-1');
+        await store.update('todos', 'a', {
+          'title': 'bread',
+        }, transactionId: 'tx-1');
+        await store.insert('todos', 'b', {
+          'title': 'eggs',
+        }, transactionId: 'tx-2');
 
-      final engine = happyEngine();
-      addTearDown(engine.close);
-      expect(await engine.syncNow(), isTrue);
+        final engine = happyEngine();
+        addTearDown(engine.close);
+        expect(await engine.syncNow(), isTrue);
 
-      final push = bodies.first['transactions']! as List;
-      expect(push, hasLength(2), reason: 'two transaction groups');
-      expect((push.first as Map)['id'], 'tx-1');
-      expect(((push.first as Map)['ops'] as List), hasLength(2));
-      expect(await store.pendingCount(), 0);
-    });
+        final push = bodies.first['transactions']! as List;
+        expect(push, hasLength(2), reason: 'two transaction groups');
+        expect((push.first as Map)['id'], 'tx-1');
+        expect(((push.first as Map)['ops'] as List), hasLength(2));
+        expect(await store.pendingCount(), 0);
+      },
+    );
 
     test('runs before pull so a fresh write is never clobbered', () async {
-      await store.insert('todos', 'a', {'title': 'milk'},
-          transactionId: 'tx-1');
+      await store.insert('todos', 'a', {
+        'title': 'milk',
+      }, transactionId: 'tx-1');
       final engine = happyEngine();
       addTearDown(engine.close);
       await engine.syncNow();
@@ -119,35 +124,40 @@ void main() {
       expect(routes, isNot(contains('/push')));
     });
 
-    test('drops writes the backend permanently refused and reports them',
-        () async {
-      await store.insert('todos', 'a', {'title': 'milk'},
-          transactionId: 'tx-1');
+    test(
+      'drops writes the backend permanently refused and reports them',
+      () async {
+        await store.insert('todos', 'a', {
+          'title': 'milk',
+        }, transactionId: 'tx-1');
 
-      final engine = engineWith((request) async {
-        if (request.url.path == '/push') {
-          return ok({
-            'applied': 0,
-            'skipped': [
-              {'id': 'a', 'collection': 'todos', 'reason': 'not owned'},
-            ],
-          });
-        }
-        return ok({'documents': const [], 'cursor': null, 'has_more': false});
-      });
-      addTearDown(engine.close);
-      await engine.syncNow();
+        final engine = engineWith((request) async {
+          if (request.url.path == '/push') {
+            return ok({
+              'applied': 0,
+              'skipped': [
+                {'id': 'a', 'collection': 'todos', 'reason': 'not owned'},
+              ],
+            });
+          }
+          return ok({'documents': const [], 'cursor': null, 'has_more': false});
+        });
+        addTearDown(engine.close);
+        await engine.syncNow();
 
-      // Retrying forever would wedge every later write behind this one.
-      expect(await store.pendingCount(), 0);
-    });
+        // Retrying forever would wedge every later write behind this one.
+        expect(await store.pendingCount(), 0);
+      },
+    );
   });
 
   group('pull', () {
     test('applies documents and advances the cursor', () async {
-      final engine = happyEngine(documents: [
-        {'id': 'srv-1', 'title': 'from server'},
-      ]);
+      final engine = happyEngine(
+        documents: [
+          {'id': 'srv-1', 'title': 'from server'},
+        ],
+      );
       addTearDown(engine.close);
       await engine.syncNow();
 
@@ -157,9 +167,11 @@ void main() {
     });
 
     test('sends the stored cursor on the next sync', () async {
-      final engine = happyEngine(documents: [
-        {'id': 'srv-1', 'title': 'x'},
-      ]);
+      final engine = happyEngine(
+        documents: [
+          {'id': 'srv-1', 'title': 'x'},
+        ],
+      );
       addTearDown(engine.close);
       await engine.syncNow();
       await engine.syncNow();
@@ -191,20 +203,25 @@ void main() {
   });
 
   group('failure handling', () {
-    test('a network failure never throws and is reported in the status',
-        () async {
-      final engine = engineWith((_) async => throw const SocketException('x'));
-      addTearDown(engine.close);
+    test(
+      'a network failure never throws and is reported in the status',
+      () async {
+        final engine = engineWith(
+          (_) async => throw const SocketException('x'),
+        );
+        addTearDown(engine.close);
 
-      expect(await engine.syncNow(), isFalse);
-      expect(engine.status.connected, isFalse);
-      expect(engine.status.offlineReason, SyncOffline.unreachable);
-      expect(engine.status.error, isNotNull);
-    });
+        expect(await engine.syncNow(), isFalse);
+        expect(engine.status.connected, isFalse);
+        expect(engine.status.offlineReason, SyncOffline.unreachable);
+        expect(engine.status.error, isNotNull);
+      },
+    );
 
     test('queued writes survive a failed sync', () async {
-      await store.insert('todos', 'a', {'title': 'milk'},
-          transactionId: 'tx-1');
+      await store.insert('todos', 'a', {
+        'title': 'milk',
+      }, transactionId: 'tx-1');
       final engine = engineWith((_) async => http.Response('boom', 503));
       addTearDown(engine.close);
 

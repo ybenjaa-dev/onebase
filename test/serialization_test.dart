@@ -31,8 +31,10 @@ void main() {
 
     test('datetime becomes UTC ISO-8601', () {
       final local = DateTime(2026, 7, 2, 13);
-      expect(encode(local, MongoFieldType.datetime),
-          local.toUtc().toIso8601String());
+      expect(
+        encode(local, MongoFieldType.datetime),
+        local.toUtc().toIso8601String(),
+      );
     });
 
     test('json maps and lists become JSON strings', () {
@@ -43,15 +45,26 @@ void main() {
     test('type mismatches throw QueryException with the field name', () {
       expect(
         () => encode('yes', MongoFieldType.bool),
-        throwsA(isA<QueryException>()
-            .having((e) => e.message, 'message', contains('"f"'))),
+        throwsA(
+          isA<QueryException>().having(
+            (e) => e.message,
+            'message',
+            contains('"f"'),
+          ),
+        ),
       );
       expect(
-          () => encode(1, MongoFieldType.text), throwsA(isA<QueryException>()));
-      expect(() => encode('2026-01-01', MongoFieldType.datetime),
-          throwsA(isA<QueryException>()));
-      expect(() => encode('not json', MongoFieldType.json),
-          throwsA(isA<QueryException>()));
+        () => encode(1, MongoFieldType.text),
+        throwsA(isA<QueryException>()),
+      );
+      expect(
+        () => encode('2026-01-01', MongoFieldType.datetime),
+        throwsA(isA<QueryException>()),
+      );
+      expect(
+        () => encode('not json', MongoFieldType.json),
+        throwsA(isA<QueryException>()),
+      );
     });
   });
 
@@ -63,9 +76,9 @@ void main() {
 
     test('datetime from ISO string', () {
       expect(
-          ValueCodec.decode(
-              '2026-07-02T12:00:00.000Z', MongoFieldType.datetime),
-          DateTime.utc(2026, 7, 2, 12));
+        ValueCodec.decode('2026-07-02T12:00:00.000Z', MongoFieldType.datetime),
+        DateTime.utc(2026, 7, 2, 12),
+      );
     });
 
     test('unparseable datetime falls back to the raw string', () {
@@ -74,7 +87,7 @@ void main() {
 
     test('json from string', () {
       expect(ValueCodec.decode('{"a":[1,2]}', MongoFieldType.json), {
-        'a': [1, 2]
+        'a': [1, 2],
       });
     });
 
@@ -91,31 +104,45 @@ void main() {
     test('encode then decode preserves values', () {
       final now = DateTime.now();
       expect(
-          ValueCodec.decode(
-              encode(now, MongoFieldType.datetime), MongoFieldType.datetime),
-          now.toUtc());
+        ValueCodec.decode(
+          encode(now, MongoFieldType.datetime),
+          MongoFieldType.datetime,
+        ),
+        now.toUtc(),
+      );
       expect(
-          ValueCodec.decode(
-              encode({
-                'nested': [true, null]
-              }, MongoFieldType.json),
-              MongoFieldType.json),
-          {
-            'nested': [true, null]
-          });
+        ValueCodec.decode(
+          encode({
+            'nested': [true, null],
+          }, MongoFieldType.json),
+          MongoFieldType.json,
+        ),
+        {
+          'nested': [true, null],
+        },
+      );
       expect(
-          ValueCodec.decode(
-              encode(true, MongoFieldType.bool), MongoFieldType.bool),
-          true);
+        ValueCodec.decode(
+          encode(true, MongoFieldType.bool),
+          MongoFieldType.bool,
+        ),
+        true,
+      );
     });
   });
 
   group('decodeRow', () {
     test('converts declared fields, passes through id and unknowns', () {
-      final schema = MongoCollectionSchema('c',
-          fields: {'done': MongoFieldType.bool}, shared: true);
-      final decoded =
-          ValueCodec.decodeRow({'id': 'x', 'done': 1, 'extra': 'raw'}, schema);
+      final schema = MongoCollectionSchema(
+        'c',
+        fields: {'done': MongoFieldType.bool},
+        shared: true,
+      );
+      final decoded = ValueCodec.decodeRow({
+        'id': 'x',
+        'done': 1,
+        'extra': 'raw',
+      }, schema);
       expect(decoded, {'id': 'x', 'done': true, 'extra': 'raw'});
     });
   });

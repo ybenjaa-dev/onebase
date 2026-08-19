@@ -21,9 +21,9 @@ class LocalQueryRunner implements QueryRunner {
     bool count = false,
   }) {
     final parameters = <Object?>[];
-    final buffer =
-        StringBuffer(count ? 'SELECT COUNT(*) AS c FROM ' : 'SELECT * FROM ')
-          ..write('"${schema.name}"');
+    final buffer = StringBuffer(
+      count ? 'SELECT COUNT(*) AS c FROM ' : 'SELECT * FROM ',
+    )..write('"${schema.name}"');
 
     if (spec.filters.isNotEmpty) {
       final conditions = <String>[];
@@ -64,7 +64,9 @@ class LocalQueryRunner implements QueryRunner {
 
   @override
   Future<List<Map<String, Object?>>> find(
-      MongoCollectionSchema schema, QuerySpec spec) async {
+    MongoCollectionSchema schema,
+    QuerySpec spec,
+  ) async {
     final query = compile(schema, spec);
     final rows = await _executor.getAll(query.sql, query.parameters);
     return [for (final row in rows) ValueCodec.decodeRow(row, schema)];
@@ -79,17 +81,26 @@ class LocalQueryRunner implements QueryRunner {
 
   @override
   Stream<List<Map<String, Object?>>> watch(
-      MongoCollectionSchema schema, QuerySpec spec) {
+    MongoCollectionSchema schema,
+    QuerySpec spec,
+  ) {
     final query = compile(schema, spec);
-    return _executor.watch(query.sql, parameters: query.parameters).map(
-        (rows) => [for (final row in rows) ValueCodec.decodeRow(row, schema)]);
+    return _executor
+        .watch(query.sql, parameters: query.parameters)
+        .map(
+          (rows) => [for (final row in rows) ValueCodec.decodeRow(row, schema)],
+        );
   }
 
   @override
   Future<Map<String, Object?>?> findById(
-      MongoCollectionSchema schema, String id) async {
-    final row = await _executor
-        .getOptional('SELECT * FROM "${schema.name}" WHERE id = ?', [id]);
+    MongoCollectionSchema schema,
+    String id,
+  ) async {
+    final row = await _executor.getOptional(
+      'SELECT * FROM "${schema.name}" WHERE id = ?',
+      [id],
+    );
     return row == null ? null : ValueCodec.decodeRow(row, schema);
   }
 }

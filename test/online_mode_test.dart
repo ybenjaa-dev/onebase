@@ -44,17 +44,21 @@ void main() {
     );
   }
 
-  http.Response ok(Map<String, Object?> body) =>
-      http.Response(jsonEncode(body), 200,
-          headers: {'content-type': 'application/json'});
+  http.Response ok(Map<String, Object?> body) => http.Response(
+    jsonEncode(body),
+    200,
+    headers: {'content-type': 'application/json'},
+  );
 
   group('reads', () {
     test('find posts the encoded query and decodes the response', () async {
-      final api = apiWith((_) async => ok({
-            'documents': [
-              {'id': 'a', 'title': 'milk', 'done': 1},
-            ],
-          }));
+      final api = apiWith(
+        (_) async => ok({
+          'documents': [
+            {'id': 'a', 'title': 'milk', 'done': 1},
+          ],
+        }),
+      );
       final runner = RemoteQueryRunner(api);
 
       final results = await MongoCollection(
@@ -98,20 +102,25 @@ void main() {
 
       expect(id, 'id-1');
       expect(paths.single, '/push');
-      final ops = ((sent.single['transactions']! as List).single as Map)['ops']!
-          as List;
+      final ops =
+          ((sent.single['transactions']! as List).single as Map)['ops']!
+              as List;
       expect((ops.single as Map)['op'], 'put');
-      expect(
-          (ops.single as Map)['data'], {'title': 'milk', 'owner_id': 'user-1'});
+      expect((ops.single as Map)['data'], {
+        'title': 'milk',
+        'owner_id': 'user-1',
+      });
     });
 
     test('a refused write throws instead of failing silently', () async {
-      final api = apiWith((_) async => ok({
-            'applied': 0,
-            'skipped': [
-              {'id': 'a', 'collection': 'todos', 'reason': 'not owned'},
-            ],
-          }));
+      final api = apiWith(
+        (_) async => ok({
+          'applied': 0,
+          'skipped': [
+            {'id': 'a', 'collection': 'todos', 'reason': 'not owned'},
+          ],
+        }),
+      );
       // Online mode has no queue, so the caller must learn immediately.
       await expectLater(
         RemoteWriter(api).delete('todos', 'a'),
@@ -123,11 +132,13 @@ void main() {
   group('watch', () {
     test('re-queries when realtime reports a change, and dedupes', () async {
       var title = 'first';
-      final api = apiWith((_) async => ok({
-            'documents': [
-              {'id': 'a', 'title': title},
-            ],
-          }));
+      final api = apiWith(
+        (_) async => ok({
+          'documents': [
+            {'id': 'a', 'title': title},
+          ],
+        }),
+      );
       final changes = StreamController<String>.broadcast();
       final runner = RemoteQueryRunner(
         api,
@@ -177,8 +188,10 @@ void main() {
 
     test('polls when no realtime channel is available', () async {
       final api = apiWith((_) async => ok({'documents': const []}));
-      final runner = RemoteQueryRunner(api,
-          pollInterval: const Duration(milliseconds: 20));
+      final runner = RemoteQueryRunner(
+        api,
+        pollInterval: const Duration(milliseconds: 20),
+      );
 
       final sub = runner.watch(schema, const QuerySpec()).listen((_) {});
       await Future<void>.delayed(const Duration(milliseconds: 120));
@@ -189,8 +202,10 @@ void main() {
 
     test('stops querying once the stream is cancelled', () async {
       final api = apiWith((_) async => ok({'documents': const []}));
-      final runner = RemoteQueryRunner(api,
-          pollInterval: const Duration(milliseconds: 20));
+      final runner = RemoteQueryRunner(
+        api,
+        pollInterval: const Duration(milliseconds: 20),
+      );
 
       final sub = runner.watch(schema, const QuerySpec()).listen((_) {});
       await Future<void>.delayed(const Duration(milliseconds: 60));

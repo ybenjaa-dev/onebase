@@ -7,27 +7,38 @@ import 'schema.dart';
 /// to the declared [MongoFieldType].
 abstract final class ValueCodec {
   /// Dart value → SQLite value for storage or query parameters.
-  static Object? encode(Object? value, MongoFieldType type,
-      {required String field, required String collection}) {
+  static Object? encode(
+    Object? value,
+    MongoFieldType type, {
+    required String field,
+    required String collection,
+  }) {
     if (value == null) return null;
     return switch (type) {
       MongoFieldType.text => _expect<String>(value, type, field, collection),
       MongoFieldType.int => _expect<int>(value, type, field, collection),
-      MongoFieldType.double =>
-        (_expect<num>(value, type, field, collection)).toDouble(),
+      MongoFieldType.double => (_expect<num>(
+        value,
+        type,
+        field,
+        collection,
+      )).toDouble(),
       MongoFieldType.bool =>
         _expect<bool>(value, type, field, collection) ? 1 : 0,
-      MongoFieldType.datetime =>
-        _expect<DateTime>(value, type, field, collection)
-            .toUtc()
-            .toIso8601String(),
-      MongoFieldType.json => value is Map || value is List
-          ? jsonEncode(value)
-          : throw QueryException(
-              'Field "$field" on "$collection" is json but got '
-              '${value.runtimeType}.',
-              hint: 'Pass a Map or List for json fields.',
-            ),
+      MongoFieldType.datetime => _expect<DateTime>(
+        value,
+        type,
+        field,
+        collection,
+      ).toUtc().toIso8601String(),
+      MongoFieldType.json =>
+        value is Map || value is List
+            ? jsonEncode(value)
+            : throw QueryException(
+                'Field "$field" on "$collection" is json but got '
+                '${value.runtimeType}.',
+                hint: 'Pass a Map or List for json fields.',
+              ),
     };
   }
 
@@ -48,7 +59,9 @@ abstract final class ValueCodec {
   /// Decodes a full SQLite row into a document, converting every declared
   /// field; undeclared columns (like `id`) pass through unchanged.
   static Map<String, Object?> decodeRow(
-      Map<String, Object?> row, MongoCollectionSchema schema) {
+    Map<String, Object?> row,
+    MongoCollectionSchema schema,
+  ) {
     return {
       for (final MapEntry(:key, :value) in row.entries)
         key: schema.fields.containsKey(key)
@@ -66,12 +79,17 @@ abstract final class ValueCodec {
   }
 
   static T _expect<T>(
-      Object value, MongoFieldType type, String field, String collection) {
+    Object value,
+    MongoFieldType type,
+    String field,
+    String collection,
+  ) {
     if (value is T) return value as T;
     throw QueryException(
       'Field "$field" on "$collection" is declared ${type.yamlName} but got '
       '${value.runtimeType} ($value).',
-      hint: 'Fix the value or change the field type in onebase.yaml and '
+      hint:
+          'Fix the value or change the field type in onebase.yaml and '
           're-run `dart run onebase:setup`.',
     );
   }

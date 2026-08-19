@@ -35,10 +35,9 @@ void main() {
     dir.deleteSync(recursive: true);
   });
 
-  Future<List<Map<String, Object?>>> rows() async =>
-      (await db.getAll('SELECT * FROM "todos" ORDER BY id'))
-          .map(Map<String, Object?>.of)
-          .toList();
+  Future<List<Map<String, Object?>>> rows() async => (await db.getAll(
+    'SELECT * FROM "todos" ORDER BY id',
+  )).map(Map<String, Object?>.of).toList();
 
   group('migrate', () {
     test('creates a table per collection with the declared columns', () async {
@@ -66,15 +65,18 @@ void main() {
       await LocalStore(db, widened).migrate();
 
       final info = await db.getAll('PRAGMA table_info("todos")');
-      expect({for (final row in info) row['name'] as String},
-          contains('priority'));
+      expect({
+        for (final row in info) row['name'] as String,
+      }, contains('priority'));
     });
   });
 
   group('writes', () {
     test('insert stores the row and queues one op', () async {
-      await store.insert('todos', 'a', {'title': 'milk', 'done': 0},
-          transactionId: 'tx-1');
+      await store.insert('todos', 'a', {
+        'title': 'milk',
+        'done': 0,
+      }, transactionId: 'tx-1');
 
       expect((await rows()).single['title'], 'milk');
       final pending = await store.pendingOps();
@@ -85,8 +87,10 @@ void main() {
     });
 
     test('update patches only the given fields', () async {
-      await store.insert('todos', 'a', {'title': 'milk', 'done': 0},
-          transactionId: 'tx-1');
+      await store.insert('todos', 'a', {
+        'title': 'milk',
+        'done': 0,
+      }, transactionId: 'tx-1');
       await store.update('todos', 'a', {'done': 1}, transactionId: 'tx-2');
 
       final row = (await rows()).single;
@@ -96,8 +100,9 @@ void main() {
     });
 
     test('delete removes the row and queues a delete op', () async {
-      await store.insert('todos', 'a', {'title': 'milk'},
-          transactionId: 'tx-1');
+      await store.insert('todos', 'a', {
+        'title': 'milk',
+      }, transactionId: 'tx-1');
       await store.delete('todos', 'a', transactionId: 'tx-2');
 
       expect(await rows(), isEmpty);
@@ -116,85 +121,63 @@ void main() {
 
   group('applyPull', () {
     test('upserts server documents and advances the cursor', () async {
-      await store.applyPull(
-        'todos',
-        [
-          {'id': 'srv-1', 'title': 'from server', 'done': 1},
-        ],
-        '2026-01-01T00:00:00.000Z',
-      );
+      await store.applyPull('todos', [
+        {'id': 'srv-1', 'title': 'from server', 'done': 1},
+      ], '2026-01-01T00:00:00.000Z');
 
       expect((await rows()).single['title'], 'from server');
       expect(await store.cursor('todos'), '2026-01-01T00:00:00.000Z');
     });
 
     test('removes documents flagged deleted', () async {
-      await store.applyPull(
-          'todos',
-          [
-            {'id': 'srv-1', 'title': 'x'},
-          ],
-          'c1');
-      await store.applyPull(
-          'todos',
-          [
-            {'id': 'srv-1', '_deleted': true},
-          ],
-          'c2');
+      await store.applyPull('todos', [
+        {'id': 'srv-1', 'title': 'x'},
+      ], 'c1');
+      await store.applyPull('todos', [
+        {'id': 'srv-1', '_deleted': true},
+      ], 'c2');
 
       expect(await rows(), isEmpty);
     });
 
     test('accepts _id as well as id', () async {
-      await store.applyPull(
-          'todos',
-          [
-            {'_id': 'srv-1', 'title': 'x'},
-          ],
-          'c1');
+      await store.applyPull('todos', [
+        {'_id': 'srv-1', 'title': 'x'},
+      ], 'c1');
       expect((await rows()).single['id'], 'srv-1');
     });
 
-    test('replays pending local writes on top of the server snapshot',
-        () async {
-      // The user edits a row while a pull is in flight: their change must
-      // still be on screen after the server snapshot is applied.
-      await store.applyPull(
-          'todos',
-          [
-            {'id': 'a', 'title': 'server title', 'done': 0},
-          ],
-          'c1');
-      await store.update('todos', 'a', {'title': 'my edit'},
-          transactionId: 'tx-1');
+    test(
+      'replays pending local writes on top of the server snapshot',
+      () async {
+        // The user edits a row while a pull is in flight: their change must
+        // still be on screen after the server snapshot is applied.
+        await store.applyPull('todos', [
+          {'id': 'a', 'title': 'server title', 'done': 0},
+        ], 'c1');
+        await store.update('todos', 'a', {
+          'title': 'my edit',
+        }, transactionId: 'tx-1');
 
-      await store.applyPull(
-          'todos',
-          [
-            {'id': 'a', 'title': 'server title', 'done': 1},
-          ],
-          'c2');
+        await store.applyPull('todos', [
+          {'id': 'a', 'title': 'server title', 'done': 1},
+        ], 'c2');
 
-      final row = (await rows()).single;
-      expect(row['title'], 'my edit', reason: 'local edit must survive');
-      expect(row['done'], 1, reason: 'untouched server field must apply');
-    });
+        final row = (await rows()).single;
+        expect(row['title'], 'my edit', reason: 'local edit must survive');
+        expect(row['done'], 1, reason: 'untouched server field must apply');
+      },
+    );
 
     test('a pending local delete is not resurrected by a pull', () async {
-      await store.applyPull(
-          'todos',
-          [
-            {'id': 'a', 'title': 'x'},
-          ],
-          'c1');
+      await store.applyPull('todos', [
+        {'id': 'a', 'title': 'x'},
+      ], 'c1');
       await store.delete('todos', 'a', transactionId: 'tx-1');
 
-      await store.applyPull(
-          'todos',
-          [
-            {'id': 'a', 'title': 'x'},
-          ],
-          'c2');
+      await store.applyPull('todos', [
+        {'id': 'a', 'title': 'x'},
+      ], 'c2');
 
       expect(await rows(), isEmpty);
     });
@@ -222,8 +205,10 @@ void main() {
       await store.update('todos', 'a', {'done': 1}, transactionId: 'tx-2');
       await store.delete('todos', 'a', transactionId: 'tx-3');
 
-      expect([for (final op in await store.pendingOps()) op.op],
-          ['put', 'patch', 'delete']);
+      expect(
+        [for (final op in await store.pendingOps()) op.op],
+        ['put', 'patch', 'delete'],
+      );
     });
   });
 

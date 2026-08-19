@@ -7,8 +7,8 @@ class TypedCollection<T> {
     this._collection, {
     required T Function(Map<String, Object?> json) fromJson,
     required Map<String, Object?> Function(T value) toJson,
-  })  : _fromJson = fromJson,
-        _toJson = toJson;
+  }) : _fromJson = fromJson,
+       _toJson = toJson;
 
   final MongoCollection _collection;
   final T Function(Map<String, Object?> json) _fromJson;
@@ -33,8 +33,9 @@ class TypedCollection<T> {
     return document == null ? null : _fromJson(document);
   }
 
-  Future<List<T>> find() async =>
-      [for (final document in await _collection.find()) _fromJson(document)];
+  Future<List<T>> find() async => [
+    for (final document in await _collection.find()) _fromJson(document),
+  ];
 
   Future<T?> findOne() async {
     final document = await _collection.findOne();
@@ -43,9 +44,9 @@ class TypedCollection<T> {
 
   Future<int> count() => _collection.count();
 
-  Stream<List<T>> watch() => _collection
-      .watch()
-      .map((documents) => [for (final doc in documents) _fromJson(doc)]);
+  Stream<List<T>> watch() => _collection.watch().map(
+    (documents) => [for (final doc in documents) _fromJson(doc)],
+  );
 
   /// Filtered typed query. See [MongoQuery.where] for operators.
   TypedQuery<T> where(
@@ -77,7 +78,9 @@ class TypedCollection<T> {
 
   TypedQuery<T> orderBy(String field, {bool descending = false}) =>
       TypedQuery<T>(
-          _collection.orderBy(field, descending: descending), _fromJson);
+        _collection.orderBy(field, descending: descending),
+        _fromJson,
+      );
 
   TypedQuery<T> limit(int count) =>
       TypedQuery<T>(_collection.limit(count), _fromJson);
@@ -126,8 +129,9 @@ class TypedQuery<T> {
   TypedQuery<T> offset(int count) =>
       TypedQuery<T>(_query.offset(count), _fromJson);
 
-  Future<List<T>> find() async =>
-      [for (final document in await _query.find()) _fromJson(document)];
+  Future<List<T>> find() async => [
+    for (final document in await _query.find()) _fromJson(document),
+  ];
 
   Future<T?> findOne() async {
     final document = await _query.findOne();
@@ -136,7 +140,7 @@ class TypedQuery<T> {
 
   Future<int> count() => _query.count();
 
-  Stream<List<T>> watch() => _query
-      .watch()
-      .map((documents) => [for (final doc in documents) _fromJson(doc)]);
+  Stream<List<T>> watch() => _query.watch().map(
+    (documents) => [for (final doc in documents) _fromJson(doc)],
+  );
 }

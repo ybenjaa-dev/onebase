@@ -77,16 +77,17 @@ collections:
     test('ships one backend that runs on Node, Docker and Vercel', () {
       final files = generateBackendFiles(schema);
       expect(
-          files.keys,
-          containsAll(<String>[
-            'src/core.ts',
-            'src/router.ts',
-            'src/server.ts',
-            'api/index.ts',
-            'Dockerfile',
-            'package.json',
-            '.env.example',
-          ]));
+        files.keys,
+        containsAll(<String>[
+          'src/core.ts',
+          'src/router.ts',
+          'src/server.ts',
+          'api/index.ts',
+          'Dockerfile',
+          'package.json',
+          '.env.example',
+        ]),
+      );
       // Routing lives in one place so every host adapter stays trivial.
       expect(files['src/router.ts'], contains("case '/push':"));
       expect(files['src/router.ts'], contains("case '/pull':"));
@@ -184,14 +185,15 @@ collections:
     test('assembles the dart schema and backend under one root', () {
       final setup = buildSetupFiles(schema);
       expect(
-          setup.files.keys,
-          containsAll(<String>[
-            'lib/onebase_schema.g.dart',
-            'backend/src/core.ts',
-            'backend/src/server.ts',
-            'backend/Dockerfile',
-            'backend/README.md',
-          ]));
+        setup.files.keys,
+        containsAll(<String>[
+          'lib/onebase_schema.g.dart',
+          'backend/src/core.ts',
+          'backend/src/server.ts',
+          'backend/Dockerfile',
+          'backend/README.md',
+        ]),
+      );
       // No PowerSync artefacts remain.
       expect(setup.files.keys.where((k) => k.contains('powersync')), isEmpty);
     });

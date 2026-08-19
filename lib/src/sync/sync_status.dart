@@ -75,7 +75,8 @@ class SyncStatus {
   }
 
   @override
-  String toString() => 'SyncStatus(connected: $connected, '
+  String toString() =>
+      'SyncStatus(connected: $connected, '
       'downloading: $downloading, uploading: $uploading, '
       'pendingWrites: $pendingWrites, lastSyncedAt: $lastSyncedAt, '
       'offlineReason: $offlineReason, error: $error)';

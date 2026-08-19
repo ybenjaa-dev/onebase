@@ -45,11 +45,11 @@ class Onebase {
     SyncEngine? engine,
     RealtimeClient? realtime,
     required SyncApi api,
-  })  : _database = database,
-        _store = store,
-        _engine = engine,
-        _realtime = realtime,
-        _api = api;
+  }) : _database = database,
+       _store = store,
+       _engine = engine,
+       _realtime = realtime,
+       _api = api;
 
   static Onebase? _instance;
 
@@ -89,12 +89,15 @@ class Onebase {
   ///
   /// [databasePath] overrides where the SQLite file lives; by default it sits
   /// in the application support directory. Ignored in online mode.
-  static Future<Onebase> init(OnebaseConfig config,
-      {String? databasePath}) async {
+  static Future<Onebase> init(
+    OnebaseConfig config, {
+    String? databasePath,
+  }) async {
     if (_instance != null) {
       throw const ConfigurationException(
         'Onebase.init() was called twice.',
-        hint: 'Call init once at startup. For a clean re-init in tests, '
+        hint:
+            'Call init once at startup. For a clean re-init in tests, '
             'call `await Onebase.close()` first.',
       );
     }
@@ -122,7 +125,8 @@ class Onebase {
         realtime: realtime,
       );
     } else {
-      final path = databasePath ??
+      final path =
+          databasePath ??
           p.join((await getApplicationSupportDirectory()).path, 'onebase.db');
 
       final database = SqliteDatabase(path: path);
@@ -272,7 +276,8 @@ class Onebase {
     if (id == null) {
       throw const InvalidTokenException(
         'Cannot auto-fill the owner field: no user is signed in.',
-        hint: 'Sign in before writing, or pass the owner field explicitly '
+        hint:
+            'Sign in before writing, or pass the owner field explicitly '
             'in the document.',
       );
     }

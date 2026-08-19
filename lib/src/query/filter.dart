@@ -81,8 +81,12 @@ class Filter {
           _ => raw,
         };
       }
-      return ValueCodec.encode(raw, schema.fieldType(field),
-          field: field, collection: schema.name);
+      return ValueCodec.encode(
+        raw,
+        schema.fieldType(field),
+        field: field,
+        collection: schema.name,
+      );
     }
 
     switch (operator) {
@@ -98,8 +102,9 @@ class Filter {
           );
         }
         final placeholders = List.filled(values.length, '?').join(', ');
-        return SqlFragment('${column.sql} IN ($placeholders)',
-            [for (final v in values) encodeValue(v)]);
+        return SqlFragment('${column.sql} IN ($placeholders)', [
+          for (final v in values) encodeValue(v),
+        ]);
       default:
         return SqlFragment('${column.sql} $operator ?', [encodeValue(value)]);
     }

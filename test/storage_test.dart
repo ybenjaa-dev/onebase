@@ -57,34 +57,35 @@ storage:
         }
         bodies.add((jsonDecode(request.body) as Map).cast<String, Object?>());
         final route = request.url.path.split('/').last;
-        final body = respond?.call(route) ??
+        final body =
+            respond?.call(route) ??
             switch (route) {
               'upload-url' => {
-                  'url': 'https://s3.test/avatars/u/me.png?X-Amz-Signature=abc',
-                  'headers': {
-                    'content-type': 'image/png',
-                    'content-length': '3',
-                  },
-                  'key': 'avatars/u/me.png',
-                },
+                'url': 'https://s3.test/avatars/u/me.png?X-Amz-Signature=abc',
+                'headers': {'content-type': 'image/png', 'content-length': '3'},
+                'key': 'avatars/u/me.png',
+              },
               'complete' => {'key': 'avatars/u/me.png'},
               'download-url' => {'url': 'https://s3.test/signed-get'},
               'delete' => {'key': 'avatars/u/me.png'},
               'list' => {
-                  'files': [
-                    {
-                      'path': 'me.png',
-                      'size': 3,
-                      'content_type': 'image/png',
-                      'updated_at': '2026-01-01T00:00:00.000Z',
-                      'owner': 'u',
-                    },
-                  ],
-                },
+                'files': [
+                  {
+                    'path': 'me.png',
+                    'size': 3,
+                    'content_type': 'image/png',
+                    'updated_at': '2026-01-01T00:00:00.000Z',
+                    'owner': 'u',
+                  },
+                ],
+              },
               _ => <String, Object?>{},
             };
-        return http.Response(jsonEncode(body), 200,
-            headers: {'content-type': 'application/json'});
+        return http.Response(
+          jsonEncode(body),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
       }),
     );
     return OnebaseStorage(api, schema);
@@ -100,21 +101,32 @@ storage:
 
     test('keeps nested paths intact', () {
       expect(
-          storageWith().ref('avatars/2026/01/me.png').path, '2026/01/me.png');
+        storageWith().ref('avatars/2026/01/me.png').path,
+        '2026/01/me.png',
+      );
     });
 
     test('rejects a reference with no path', () {
       expect(
-          () => storageWith().ref('avatars'), throwsA(isA<StorageException>()));
-      expect(() => storageWith().ref('avatars/'),
-          throwsA(isA<StorageException>()));
+        () => storageWith().ref('avatars'),
+        throwsA(isA<StorageException>()),
+      );
+      expect(
+        () => storageWith().ref('avatars/'),
+        throwsA(isA<StorageException>()),
+      );
     });
 
     test('rejects an undeclared bucket, listing the real ones', () {
       expect(
         () => storageWith().ref('ghosts/x.png'),
-        throwsA(isA<SchemaParseException>()
-            .having((e) => e.hint, 'hint', contains('avatars'))),
+        throwsA(
+          isA<SchemaParseException>().having(
+            (e) => e.hint,
+            'hint',
+            contains('avatars'),
+          ),
+        ),
       );
     });
   });
@@ -139,10 +151,14 @@ storage:
     });
 
     test('refuses control characters and absurd lengths', () {
-      expect(() => storageWith().bucket('avatars').file('a\u0000b'),
-          throwsA(isA<StorageException>()));
-      expect(() => storageWith().bucket('avatars').file('a' * 1025),
-          throwsA(isA<StorageException>()));
+      expect(
+        () => storageWith().bucket('avatars').file('a\u0000b'),
+        throwsA(isA<StorageException>()),
+      );
+      expect(
+        () => storageWith().bucket('avatars').file('a' * 1025),
+        throwsA(isA<StorageException>()),
+      );
     });
 
     test('allows ordinary names, including dots and unicode', () {
@@ -150,7 +166,7 @@ storage:
         'me.png',
         'a.b.c.png',
         'photos/été.png',
-        'x-1_2.png'
+        'x-1_2.png',
       ]) {
         expect(storageWith().bucket('avatars').file(path).path, path);
       }
@@ -179,9 +195,9 @@ storage:
 
     test('completion is only recorded after the bytes land', () async {
       await expectLater(
-        storageWith(uploadStatus: 403)
-            .ref('avatars/me.png')
-            .putData(Uint8List.fromList([1, 2, 3])),
+        storageWith(
+          uploadStatus: 403,
+        ).ref('avatars/me.png').putData(Uint8List.fromList([1, 2, 3])),
         throwsA(isA<StorageException>()),
       );
       expect(calls.where((c) => c.endsWith('/storage/complete')), isEmpty);
@@ -192,20 +208,27 @@ storage:
       expect(bodies.first['contentType'], 'image/jpeg');
     });
 
-    test('rejects a type the bucket does not allow, before uploading',
-        () async {
-      await expectLater(
-        storageWith().ref('avatars/notes.pdf').putData(Uint8List(1)),
-        throwsA(isA<StorageException>()),
-      );
-      expect(calls, isEmpty, reason: 'must not reach the network');
-    });
+    test(
+      'rejects a type the bucket does not allow, before uploading',
+      () async {
+        await expectLater(
+          storageWith().ref('avatars/notes.pdf').putData(Uint8List(1)),
+          throwsA(isA<StorageException>()),
+        );
+        expect(calls, isEmpty, reason: 'must not reach the network');
+      },
+    );
 
     test('rejects a file over the bucket limit, before uploading', () async {
       await expectLater(
         storageWith().ref('avatars/big.png').putData(Uint8List(2048)),
-        throwsA(isA<StorageException>()
-            .having((e) => e.message, 'message', contains('1024'))),
+        throwsA(
+          isA<StorageException>().having(
+            (e) => e.message,
+            'message',
+            contains('1024'),
+          ),
+        ),
       );
       expect(calls, isEmpty);
     });
@@ -218,8 +241,10 @@ storage:
 
   group('read, list and delete', () {
     test('getDownloadUrl returns the signed URL', () async {
-      expect(await storageWith().ref('avatars/me.png').getDownloadUrl(),
-          'https://s3.test/signed-get');
+      expect(
+        await storageWith().ref('avatars/me.png').getDownloadUrl(),
+        'https://s3.test/signed-get',
+      );
     });
 
     test('delete posts the bucket and path', () async {
@@ -295,7 +320,8 @@ collections:
       ]) {
         expect(
           () => parseSchemaYaml(
-              'collections:\n  t:\n    shared: true\n    fields:\n      a: text\n$yaml'),
+            'collections:\n  t:\n    shared: true\n    fields:\n      a: text\n$yaml',
+          ),
           throwsA(isA<SchemaParseException>()),
           reason: yaml,
         );

@@ -24,10 +24,10 @@ class Diagnosis {
   final String? fix;
 
   String get icon => switch (level) {
-        DiagnosisLevel.ok => '✓',
-        DiagnosisLevel.warning => '!',
-        DiagnosisLevel.error => '✗',
-      };
+    DiagnosisLevel.ok => '✓',
+    DiagnosisLevel.warning => '!',
+    DiagnosisLevel.error => '✗',
+  };
 }
 
 /// Checks a project for the things that actually go wrong: a schema that
@@ -61,62 +61,83 @@ Future<List<Diagnosis>> diagnose({
     schema = parseSchemaYaml(schemaSource.readAsStringSync());
   } on OnebaseException catch (error) {
     return [
-      Diagnosis(DiagnosisLevel.error, 'Schema does not parse',
-          detail: error.message, fix: error.hint),
+      Diagnosis(
+        DiagnosisLevel.error,
+        'Schema does not parse',
+        detail: error.message,
+        fix: error.hint,
+      ),
     ];
   }
-  findings.add(Diagnosis(
-    DiagnosisLevel.ok,
-    'Schema parses (${schema.collections.length} collection(s): '
-    '${schema.collections.keys.join(', ')})',
-  ));
+  findings.add(
+    Diagnosis(
+      DiagnosisLevel.ok,
+      'Schema parses (${schema.collections.length} collection(s): '
+      '${schema.collections.keys.join(', ')})',
+    ),
+  );
 
   // --- generated Dart ------------------------------------------------------
   final generated = File(p.join(root, 'lib', 'onebase_schema.g.dart'));
   if (!generated.existsSync()) {
-    findings.add(const Diagnosis(
-      DiagnosisLevel.error,
-      'lib/onebase_schema.g.dart is missing',
-      fix: 'dart run onebase:setup',
-    ));
+    findings.add(
+      const Diagnosis(
+        DiagnosisLevel.error,
+        'lib/onebase_schema.g.dart is missing',
+        fix: 'dart run onebase:setup',
+      ),
+    );
   } else if (generated.readAsStringSync().trim() !=
       generateDartSchema(schema).trim()) {
-    findings.add(const Diagnosis(
-      DiagnosisLevel.error,
-      'lib/onebase_schema.g.dart is out of date',
-      detail: 'It no longer matches onebase.yaml, so your models and the '
-          'runtime schema disagree.',
-      fix: 'dart run onebase:setup --force',
-    ));
+    findings.add(
+      const Diagnosis(
+        DiagnosisLevel.error,
+        'lib/onebase_schema.g.dart is out of date',
+        detail:
+            'It no longer matches onebase.yaml, so your models and the '
+            'runtime schema disagree.',
+        fix: 'dart run onebase:setup --force',
+      ),
+    );
   } else {
-    findings.add(const Diagnosis(
-        DiagnosisLevel.ok, 'Generated Dart schema matches the YAML'));
+    findings.add(
+      const Diagnosis(
+        DiagnosisLevel.ok,
+        'Generated Dart schema matches the YAML',
+      ),
+    );
   }
 
   // --- generated backend ---------------------------------------------------
   final core = File(p.join(root, 'backend', 'src', 'core.ts'));
   if (!core.existsSync()) {
-    findings.add(const Diagnosis(
-      DiagnosisLevel.error,
-      'backend/src/core.ts is missing',
-      fix: 'dart run onebase:setup',
-    ));
+    findings.add(
+      const Diagnosis(
+        DiagnosisLevel.error,
+        'backend/src/core.ts is missing',
+        fix: 'dart run onebase:setup',
+      ),
+    );
   } else {
     final source = core.readAsStringSync();
     final expected = buildCollectionsTs(schema);
     // This is the drift that silently breaks apps: the client knows about a
     // collection or field the deployed backend has never heard of.
     if (!source.contains(expected)) {
-      findings.add(const Diagnosis(
-        DiagnosisLevel.error,
-        'The backend was generated from a different schema',
-        detail: 'Writes to new collections or fields will be refused until '
-            'the deployed backend is regenerated and redeployed.',
-        fix: 'dart run onebase:setup --force, then redeploy backend/',
-      ));
+      findings.add(
+        const Diagnosis(
+          DiagnosisLevel.error,
+          'The backend was generated from a different schema',
+          detail:
+              'Writes to new collections or fields will be refused until '
+              'the deployed backend is regenerated and redeployed.',
+          fix: 'dart run onebase:setup --force, then redeploy backend/',
+        ),
+      );
     } else {
-      findings.add(const Diagnosis(
-          DiagnosisLevel.ok, 'Backend schema matches the YAML'));
+      findings.add(
+        const Diagnosis(DiagnosisLevel.ok, 'Backend schema matches the YAML'),
+      );
     }
   }
 
@@ -137,7 +158,8 @@ List<Diagnosis> _checkEnv(String root, {required bool storageDeclared}) {
       const Diagnosis(
         DiagnosisLevel.warning,
         'backend/.env not found',
-        detail: 'Fine if you set the variables in your host dashboard '
+        detail:
+            'Fine if you set the variables in your host dashboard '
             'instead.',
         fix: 'cd backend && cp .env.example .env',
       ),
@@ -150,8 +172,9 @@ List<Diagnosis> _checkEnv(String root, {required bool storageDeclared}) {
     if (trimmed.isEmpty || trimmed.startsWith('#')) continue;
     final index = trimmed.indexOf('=');
     if (index <= 0) continue;
-    values[trimmed.substring(0, index).trim()] =
-        trimmed.substring(index + 1).trim();
+    values[trimmed.substring(0, index).trim()] = trimmed
+        .substring(index + 1)
+        .trim();
   }
 
   final findings = <Diagnosis>[];
@@ -163,23 +186,33 @@ List<Diagnosis> _checkEnv(String root, {required bool storageDeclared}) {
 
   final mode = values['AUTH_MODE'] ?? '';
   if (mode.isEmpty) {
-    findings.add(const Diagnosis(
-      DiagnosisLevel.error,
-      'AUTH_MODE is not set',
-      detail: 'The backend refuses to start without it.',
-      fix: 'Set AUTH_MODE to jwks, hs256 or dev in backend/.env',
-    ));
+    findings.add(
+      const Diagnosis(
+        DiagnosisLevel.error,
+        'AUTH_MODE is not set',
+        detail: 'The backend refuses to start without it.',
+        fix: 'Set AUTH_MODE to jwks, hs256 or dev in backend/.env',
+      ),
+    );
   } else if (!const {'dev', 'hs256', 'jwks'}.contains(mode)) {
-    findings.add(Diagnosis(DiagnosisLevel.error, 'AUTH_MODE="$mode" is invalid',
-        fix: 'Use jwks, hs256 or dev.'));
+    findings.add(
+      Diagnosis(
+        DiagnosisLevel.error,
+        'AUTH_MODE="$mode" is invalid',
+        fix: 'Use jwks, hs256 or dev.',
+      ),
+    );
   } else if (mode == 'dev') {
-    findings.add(const Diagnosis(
-      DiagnosisLevel.warning,
-      'AUTH_MODE=dev',
-      detail: 'The /token endpoint will sign a JWT for any email address. '
-          'Fine while building, never with real users.',
-      fix: 'Switch to jwks (or hs256) before launch.',
-    ));
+    findings.add(
+      const Diagnosis(
+        DiagnosisLevel.warning,
+        'AUTH_MODE=dev',
+        detail:
+            'The /token endpoint will sign a JWT for any email address. '
+            'Fine while building, never with real users.',
+        fix: 'Switch to jwks (or hs256) before launch.',
+      ),
+    );
   } else {
     findings.add(Diagnosis(DiagnosisLevel.ok, 'AUTH_MODE=$mode'));
   }
@@ -187,68 +220,86 @@ List<Diagnosis> _checkEnv(String root, {required bool storageDeclared}) {
   if (mode == 'dev' || mode == 'hs256') {
     final secret = values['JWT_SECRET'] ?? '';
     if (secret.length < 32) {
-      findings.add(Diagnosis(
-        DiagnosisLevel.error,
-        'JWT_SECRET is too short (${secret.length} chars)',
-        fix: 'Use at least 32 characters.',
-      ));
+      findings.add(
+        Diagnosis(
+          DiagnosisLevel.error,
+          'JWT_SECRET is too short (${secret.length} chars)',
+          fix: 'Use at least 32 characters.',
+        ),
+      );
     }
   }
   if (storageDeclared) {
-    final missing = ['S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY']
-        .where((key) => (values[key] ?? '').isEmpty)
-        .toList();
+    final missing = [
+      'S3_BUCKET',
+      'S3_ACCESS_KEY_ID',
+      'S3_SECRET_ACCESS_KEY',
+    ].where((key) => (values[key] ?? '').isEmpty).toList();
     if (missing.isEmpty) {
       findings.add(const Diagnosis(DiagnosisLevel.ok, 'Storage is configured'));
     } else {
-      findings.add(Diagnosis(
-        DiagnosisLevel.error,
-        'Storage buckets are declared but ${missing.join(', ')} '
-        '${missing.length == 1 ? 'is' : 'are'} not set',
-        detail: 'The /storage routes will answer 501 until they are.',
-        fix: 'Set them in backend/.env, or remove the `storage:` section.',
-      ));
+      findings.add(
+        Diagnosis(
+          DiagnosisLevel.error,
+          'Storage buckets are declared but ${missing.join(', ')} '
+          '${missing.length == 1 ? 'is' : 'are'} not set',
+          detail: 'The /storage routes will answer 501 until they are.',
+          fix: 'Set them in backend/.env, or remove the `storage:` section.',
+        ),
+      );
     }
     // R2, MinIO, B2 and Spaces all need an explicit endpoint; only AWS does
     // not, and AWS needs a real region rather than "auto".
     final endpoint = values['S3_ENDPOINT'] ?? '';
     final region = values['S3_REGION'] ?? '';
     if (endpoint.isEmpty && (region.isEmpty || region == 'auto')) {
-      findings.add(const Diagnosis(
-        DiagnosisLevel.warning,
-        'S3_REGION is "auto" with no S3_ENDPOINT',
-        detail: 'Plain AWS needs a real region (eu-west-1, us-east-1, …). '
-            'Set S3_ENDPOINT instead if you are on R2, MinIO or Spaces.',
-      ));
+      findings.add(
+        const Diagnosis(
+          DiagnosisLevel.warning,
+          'S3_REGION is "auto" with no S3_ENDPOINT',
+          detail:
+              'Plain AWS needs a real region (eu-west-1, us-east-1, …). '
+              'Set S3_ENDPOINT instead if you are on R2, MinIO or Spaces.',
+        ),
+      );
     }
   }
 
   if (mode == 'jwks') {
     if ((values['JWKS_URL'] ?? '').isEmpty) {
-      findings.add(const Diagnosis(
-          DiagnosisLevel.error, 'AUTH_MODE=jwks needs JWKS_URL'));
+      findings.add(
+        const Diagnosis(DiagnosisLevel.error, 'AUTH_MODE=jwks needs JWKS_URL'),
+      );
     }
     if ((values['JWT_AUDIENCE'] ?? '').isEmpty) {
-      findings.add(const Diagnosis(
-        DiagnosisLevel.error,
-        'AUTH_MODE=jwks needs JWT_AUDIENCE',
-        detail: 'Without it, tokens your provider issued for other '
-            'applications would be accepted.',
-      ));
+      findings.add(
+        const Diagnosis(
+          DiagnosisLevel.error,
+          'AUTH_MODE=jwks needs JWT_AUDIENCE',
+          detail:
+              'Without it, tokens your provider issued for other '
+              'applications would be accepted.',
+        ),
+      );
     }
   }
   return findings;
 }
 
 Future<Diagnosis> _checkApi(
-    String apiUrl, Future<String?> Function(String url)? fetch) async {
+  String apiUrl,
+  Future<String?> Function(String url)? fetch,
+) async {
   final url = '${apiUrl.replaceAll(RegExp(r'/+$'), '')}/health';
   final get = fetch ?? _httpGet;
   try {
     final body = await get(url);
     if (body == null) {
-      return Diagnosis(DiagnosisLevel.error, 'Backend did not respond at $url',
-          fix: 'Check the URL and that the deployment is running.');
+      return Diagnosis(
+        DiagnosisLevel.error,
+        'Backend did not respond at $url',
+        fix: 'Check the URL and that the deployment is running.',
+      );
     }
     // Something answered. Decoding separately keeps "wrong host" distinct
     // from "nothing there" — they need different fixes.
@@ -268,9 +319,12 @@ Future<Diagnosis> _checkApi(
       fix: 'Check that apiUrl points at the onebase backend itself.',
     );
   } on Object catch (error) {
-    return Diagnosis(DiagnosisLevel.error, 'Could not reach $url',
-        detail: '$error',
-        fix: 'Check the URL, and that it has no trailing slash.');
+    return Diagnosis(
+      DiagnosisLevel.error,
+      'Could not reach $url',
+      detail: '$error',
+      fix: 'Check the URL, and that it has no trailing slash.',
+    );
   }
 }
 
@@ -296,8 +350,9 @@ int reportDiagnosis(List<Diagnosis> findings, StringSink out) {
   }
 
   final errors = findings.where((f) => f.level == DiagnosisLevel.error).length;
-  final warnings =
-      findings.where((f) => f.level == DiagnosisLevel.warning).length;
+  final warnings = findings
+      .where((f) => f.level == DiagnosisLevel.warning)
+      .length;
   out.writeln();
   if (errors == 0 && warnings == 0) {
     out.writeln('Everything checks out.');

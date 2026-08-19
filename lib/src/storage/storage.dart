@@ -63,8 +63,9 @@ class OnebaseStorage {
             : 'Declared buckets: ${_schema.storage.buckets.keys.join(', ')}.',
       );
     }
-    return bucket(reference.substring(0, slash))
-        .file(reference.substring(slash + 1));
+    return bucket(
+      reference.substring(0, slash),
+    ).file(reference.substring(slash + 1));
   }
 
   /// A handle on a whole bucket, for listing.
@@ -120,10 +121,7 @@ class StorageRef {
   ///
   /// For a `File`, pass `await file.readAsBytes()`; keeping `dart:io` out of
   /// this package is what lets it run on the web too.
-  Future<StorageFile> putData(
-    Uint8List bytes, {
-    String? contentType,
-  }) async {
+  Future<StorageFile> putData(Uint8List bytes, {String? contentType}) async {
     final type = contentType ?? guessContentType(path);
 
     // Checked here as well as on the server so the failure is immediate and
@@ -180,8 +178,10 @@ class StorageRef {
   /// own authorization, so it works without your app's token — treat it as a
   /// secret and do not persist it.
   Future<String> getDownloadUrl() async {
-    final response =
-        await _api.storage('download-url', {'bucket': bucket, 'path': path});
+    final response = await _api.storage('download-url', {
+      'bucket': bucket,
+      'path': path,
+    });
     return response['url']! as String;
   }
 

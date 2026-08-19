@@ -37,8 +37,13 @@ collections:
   void expectParseError(String yaml, Pattern message) {
     expect(
       () => parseSchemaYaml(yaml),
-      throwsA(isA<SchemaParseException>()
-          .having((e) => e.toString(), 'toString', contains(message))),
+      throwsA(
+        isA<SchemaParseException>().having(
+          (e) => e.toString(),
+          'toString',
+          contains(message),
+        ),
+      ),
     );
   }
 
@@ -52,7 +57,9 @@ collections:
 
   test('collection without fields', () {
     expectParseError(
-        'collections:\n  todos:\n    owner_field: x', 'no `fields`');
+      'collections:\n  todos:\n    owner_field: x',
+      'no `fields`',
+    );
   });
 
   test('unknown field type', () {
@@ -114,8 +121,13 @@ collections:
 ''');
     expect(
       () => schema.collection('missing'),
-      throwsA(isA<UnknownCollectionException>()
-          .having((e) => e.hint, 'hint', contains('todos'))),
+      throwsA(
+        isA<UnknownCollectionException>().having(
+          (e) => e.hint,
+          'hint',
+          contains('todos'),
+        ),
+      ),
     );
   });
 }

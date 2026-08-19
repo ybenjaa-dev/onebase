@@ -19,8 +19,8 @@ class MongoCollection {
     this._schema, {
     required Future<String> Function() currentUserId,
     required String Function() newId,
-  })  : _currentUserId = currentUserId,
-        _newId = newId;
+  }) : _currentUserId = currentUserId,
+       _newId = newId;
 
   final QueryRunner _runner;
   final DocumentWriter _writer;
@@ -60,8 +60,12 @@ class MongoCollection {
   Map<String, Object?> _encode(Map<String, Object?> document) {
     return {
       for (final MapEntry(:key, :value) in document.entries)
-        key: ValueCodec.encode(value, _schema.fieldType(key),
-            field: key, collection: _schema.name),
+        key: ValueCodec.encode(
+          value,
+          _schema.fieldType(key),
+          field: key,
+          collection: _schema.name,
+        ),
     };
   }
 

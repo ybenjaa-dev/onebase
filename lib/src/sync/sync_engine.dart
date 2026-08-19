@@ -19,11 +19,11 @@ class SyncEngine {
     required OnebaseSchema schema,
     Duration interval = const Duration(seconds: 5),
     Duration maxBackoff = const Duration(minutes: 5),
-  })  : _store = store,
-        _api = api,
-        _schema = schema,
-        _interval = interval,
-        _maxBackoff = maxBackoff;
+  }) : _store = store,
+       _api = api,
+       _schema = schema,
+       _interval = interval,
+       _maxBackoff = maxBackoff;
 
   final LocalStore _store;
   final SyncApi _api;
@@ -79,28 +79,32 @@ class SyncEngine {
       await _pull();
 
       _failures = 0;
-      _emit(_status.copyWith(
-        connected: true,
-        downloading: false,
-        uploading: false,
-        pendingWrites: await _store.pendingCount(),
-        lastSyncedAt: DateTime.now(),
-        clearError: true,
-      ));
+      _emit(
+        _status.copyWith(
+          connected: true,
+          downloading: false,
+          uploading: false,
+          pendingWrites: await _store.pendingCount(),
+          lastSyncedAt: DateTime.now(),
+          clearError: true,
+        ),
+      );
       if (!_firstSync.isCompleted) _firstSync.complete();
       return true;
     } on Object catch (error) {
       _failures++;
-      _emit(_status.copyWith(
-        connected: false,
-        downloading: false,
-        uploading: false,
-        pendingWrites: await _pendingCountSafe(),
-        offlineReason: error is InvalidTokenException
-            ? SyncOffline.signedOut
-            : SyncOffline.unreachable,
-        error: error,
-      ));
+      _emit(
+        _status.copyWith(
+          connected: false,
+          downloading: false,
+          uploading: false,
+          pendingWrites: await _pendingCountSafe(),
+          offlineReason: error is InvalidTokenException
+              ? SyncOffline.signedOut
+              : SyncOffline.unreachable,
+          error: error,
+        ),
+      );
       return false;
     } finally {
       _syncing = false;

@@ -14,11 +14,13 @@ String _fakeJwt(Map<String, Object?> payload) {
 void main() {
   test('decodes sub, exp and aud', () {
     final exp = DateTime.utc(2030).millisecondsSinceEpoch ~/ 1000;
-    final claims = decodeJwt(_fakeJwt({
-      'sub': 'user-42',
-      'exp': exp,
-      'aud': 'https://api.example.com',
-    }));
+    final claims = decodeJwt(
+      _fakeJwt({
+        'sub': 'user-42',
+        'exp': exp,
+        'aud': 'https://api.example.com',
+      }),
+    );
     expect(claims.subject, 'user-42');
     expect(claims.expiresAt, DateTime.utc(2030));
     expect(claims.audience, 'https://api.example.com');
@@ -26,10 +28,12 @@ void main() {
   });
 
   test('aud as list takes the first entry', () {
-    final claims = decodeJwt(_fakeJwt({
-      'sub': 's',
-      'aud': ['a', 'b']
-    }));
+    final claims = decodeJwt(
+      _fakeJwt({
+        'sub': 's',
+        'aud': ['a', 'b'],
+      }),
+    );
     expect(claims.audience, 'a');
   });
 
@@ -47,20 +51,33 @@ void main() {
   test('non-JWT strings throw with a helpful hint', () {
     expect(
       () => decodeJwt('not-a-jwt'),
-      throwsA(isA<InvalidTokenException>()
-          .having((e) => e.hint, 'hint', contains('TokenProvider'))),
+      throwsA(
+        isA<InvalidTokenException>().having(
+          (e) => e.hint,
+          'hint',
+          contains('TokenProvider'),
+        ),
+      ),
     );
   });
 
   test('corrupted payload throws', () {
     expect(
-        () => decodeJwt('aaa.%%%%.ccc'), throwsA(isA<InvalidTokenException>()));
+      () => decodeJwt('aaa.%%%%.ccc'),
+      throwsA(isA<InvalidTokenException>()),
+    );
   });
 
   test('missing sub claim throws', () {
     expect(
-        () => decodeJwt(_fakeJwt({'aud': 'x'})),
-        throwsA(isA<InvalidTokenException>()
-            .having((e) => e.message, 'message', contains('sub'))));
+      () => decodeJwt(_fakeJwt({'aud': 'x'})),
+      throwsA(
+        isA<InvalidTokenException>().having(
+          (e) => e.message,
+          'message',
+          contains('sub'),
+        ),
+      ),
+    );
   });
 }

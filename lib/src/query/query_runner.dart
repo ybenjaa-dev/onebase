@@ -8,14 +8,20 @@ import 'query_spec.dart';
 /// written against this interface, so switching modes changes no app code.
 abstract interface class QueryRunner {
   Future<List<Map<String, Object?>>> find(
-      MongoCollectionSchema schema, QuerySpec spec);
+    MongoCollectionSchema schema,
+    QuerySpec spec,
+  );
 
   Future<int> count(MongoCollectionSchema schema, QuerySpec spec);
 
   /// A stream that re-emits whenever the result set changes.
   Stream<List<Map<String, Object?>>> watch(
-      MongoCollectionSchema schema, QuerySpec spec);
+    MongoCollectionSchema schema,
+    QuerySpec spec,
+  );
 
   Future<Map<String, Object?>?> findById(
-      MongoCollectionSchema schema, String id);
+    MongoCollectionSchema schema,
+    String id,
+  );
 }

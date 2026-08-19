@@ -23,17 +23,17 @@ abstract final class WireOperator {
 
   /// Maps the SQL operator a [Filter] carries onto its wire name.
   static String of(String sqlOperator) => switch (sqlOperator) {
-        '=' => eq,
-        '!=' => ne,
-        '>' => gt,
-        '>=' => gte,
-        '<' => lt,
-        '<=' => lte,
-        'IN' => inList,
-        'IS NULL' => isNull,
-        'IS NOT NULL' => isNotNull,
-        _ => throw QueryException('Unsupported operator "$sqlOperator".'),
-      };
+    '=' => eq,
+    '!=' => ne,
+    '>' => gt,
+    '>=' => gte,
+    '<' => lt,
+    '<=' => lte,
+    'IN' => inList,
+    'IS NULL' => isNull,
+    'IS NOT NULL' => isNotNull,
+    _ => throw QueryException('Unsupported operator "$sqlOperator".'),
+  };
 }
 
 /// Serializes a [QuerySpec] for the backend.
@@ -52,8 +52,12 @@ Map<String, Object?> encodeQuery(MongoCollectionSchema schema, QuerySpec spec) {
         _ => value,
       };
     }
-    return ValueCodec.encode(value, schema.fieldType(field),
-        field: field, collection: schema.name);
+    return ValueCodec.encode(
+      value,
+      schema.fieldType(field),
+      field: field,
+      collection: schema.name,
+    );
   }
 
   return {

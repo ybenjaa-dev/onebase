@@ -47,9 +47,13 @@ void main() {
   });
 
   test('encodes values exactly as SQLite would store them', () {
-    final filters = encode(query()
-        .where('done', isEqualTo: true)
-        .where('due_at', isLessThan: DateTime.utc(2026)))['filters']! as List;
+    final filters =
+        encode(
+              query()
+                  .where('done', isEqualTo: true)
+                  .where('due_at', isLessThan: DateTime.utc(2026)),
+            )['filters']!
+            as List;
 
     // Both modes must agree on the representation, or the same query would
     // return different results depending on where it ran.
@@ -78,8 +82,9 @@ void main() {
   });
 
   test('carries order, limit and offset', () {
-    final wire =
-        encode(query().orderBy('title', descending: true).limit(10).offset(5));
+    final wire = encode(
+      query().orderBy('title', descending: true).limit(10).offset(5),
+    );
     expect(wire['order'], [
       {'field': 'title', 'descending': true},
     ]);
