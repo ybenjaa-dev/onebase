@@ -7,6 +7,7 @@ library;
 
 export 'src/auth/jwt_utils.dart' show JwtClaims, decodeJwt;
 export 'src/auth/token_provider.dart';
+export 'src/client/batch.dart' show WriteBatch;
 export 'src/client/collection.dart';
 export 'src/client/config.dart';
 export 'src/client/onebase.dart';

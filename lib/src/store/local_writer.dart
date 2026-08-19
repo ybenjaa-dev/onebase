@@ -5,8 +5,8 @@ import 'local_store.dart';
 
 /// Writes to the local replica and queues the change for upload.
 ///
-/// Each call is its own transaction group today; `LocalStore` already carries
-/// the grouping so batched writes can share one server-side transaction.
+/// Writes sharing a `transactionId` are uploaded as one group and applied by
+/// the backend inside a single MongoDB transaction.
 class LocalWriter implements DocumentWriter {
   LocalWriter(this._store, {Uuid? uuid}) : _uuid = uuid ?? const Uuid();
 
@@ -17,17 +17,29 @@ class LocalWriter implements DocumentWriter {
   Future<void> insert(
     String collection,
     String id,
-    Map<String, Object?> encoded,
-  ) => _store.insert(collection, id, encoded, transactionId: _uuid.v4());
+    Map<String, Object?> encoded, {
+    String? transactionId,
+  }) => _store.insert(
+    collection,
+    id,
+    encoded,
+    transactionId: transactionId ?? _uuid.v4(),
+  );
 
   @override
   Future<void> update(
     String collection,
     String id,
-    Map<String, Object?> encoded,
-  ) => _store.update(collection, id, encoded, transactionId: _uuid.v4());
+    Map<String, Object?> encoded, {
+    String? transactionId,
+  }) => _store.update(
+    collection,
+    id,
+    encoded,
+    transactionId: transactionId ?? _uuid.v4(),
+  );
 
   @override
-  Future<void> delete(String collection, String id) =>
-      _store.delete(collection, id, transactionId: _uuid.v4());
+  Future<void> delete(String collection, String id, {String? transactionId}) =>
+      _store.delete(collection, id, transactionId: transactionId ?? _uuid.v4());
 }

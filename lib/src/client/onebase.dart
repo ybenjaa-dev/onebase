@@ -18,6 +18,7 @@ import '../sync/realtime_client.dart';
 import '../sync/sync_api.dart';
 import '../sync/sync_engine.dart';
 import '../sync/sync_status.dart';
+import 'batch.dart';
 import 'collection.dart';
 import 'config.dart';
 import 'document_writer.dart';
@@ -187,6 +188,21 @@ class Onebase {
 
   /// The mode this client was initialized in.
   OnebaseMode get mode => _config.mode;
+
+  /// Starts a batch of writes that land together, or not at all.
+  ///
+  /// ```dart
+  /// final batch = await Onebase.instance.batch();
+  /// final orderId = batch.insert('orders', {'total': 42});
+  /// batch.update('inventory', stockId, {'count': 9});
+  /// await batch.commit();
+  /// ```
+  ///
+  /// See [WriteBatch].
+  Future<WriteBatch> batch() async {
+    final owner = await _requireUserIdOrNull();
+    return WriteBatch(_writer, _config.schema, ownerId: owner);
+  }
 
   /// File storage:
   ///

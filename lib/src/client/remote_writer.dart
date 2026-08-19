@@ -20,30 +20,33 @@ class RemoteWriter implements DocumentWriter {
   Future<void> insert(
     String collection,
     String id,
-    Map<String, Object?> encoded,
-  ) => _send('put', collection, id, encoded);
+    Map<String, Object?> encoded, {
+    String? transactionId,
+  }) => _send('put', collection, id, encoded, transactionId);
 
   @override
   Future<void> update(
     String collection,
     String id,
-    Map<String, Object?> encoded,
-  ) => _send('patch', collection, id, encoded);
+    Map<String, Object?> encoded, {
+    String? transactionId,
+  }) => _send('patch', collection, id, encoded, transactionId);
 
   @override
-  Future<void> delete(String collection, String id) =>
-      _send('delete', collection, id, null);
+  Future<void> delete(String collection, String id, {String? transactionId}) =>
+      _send('delete', collection, id, null, transactionId);
 
   Future<void> _send(
     String op,
     String collection,
     String id,
     Map<String, Object?>? data,
+    String? transactionId,
   ) async {
     final result = await _api.push([
       OutboxOp(
         seq: 0,
-        transactionId: _uuid.v4(),
+        transactionId: transactionId ?? _uuid.v4(),
         op: op,
         collection: collection,
         documentId: id,

@@ -53,12 +53,19 @@ class FakeExecutor implements SqlExecutor {
 }
 
 class RecordedWrite {
-  RecordedWrite(this.op, this.collection, this.id, this.data);
+  RecordedWrite(
+    this.op,
+    this.collection,
+    this.id,
+    this.data, [
+    this.transactionId,
+  ]);
 
   final String op;
   final String collection;
   final String id;
   final Map<String, Object?>? data;
+  final String? transactionId;
 }
 
 class FakeWriter implements DocumentWriter {
@@ -70,22 +77,28 @@ class FakeWriter implements DocumentWriter {
   Future<void> insert(
     String collection,
     String id,
-    Map<String, Object?> encoded,
-  ) async {
-    writes.add(RecordedWrite('put', collection, id, encoded));
+    Map<String, Object?> encoded, {
+    String? transactionId,
+  }) async {
+    writes.add(RecordedWrite('put', collection, id, encoded, transactionId));
   }
 
   @override
   Future<void> update(
     String collection,
     String id,
-    Map<String, Object?> encoded,
-  ) async {
-    writes.add(RecordedWrite('patch', collection, id, encoded));
+    Map<String, Object?> encoded, {
+    String? transactionId,
+  }) async {
+    writes.add(RecordedWrite('patch', collection, id, encoded, transactionId));
   }
 
   @override
-  Future<void> delete(String collection, String id) async {
-    writes.add(RecordedWrite('delete', collection, id, null));
+  Future<void> delete(
+    String collection,
+    String id, {
+    String? transactionId,
+  }) async {
+    writes.add(RecordedWrite('delete', collection, id, null, transactionId));
   }
 }
