@@ -1,7 +1,10 @@
 import '../errors.dart';
 import '../schema/schema.dart';
+import 'cursor.dart';
 import 'filter.dart';
 import 'local_query_runner.dart';
+import 'pager.dart';
+import 'paging.dart';
 import 'query_runner.dart';
 import 'query_spec.dart';
 
@@ -84,6 +87,38 @@ class MongoQuery {
     if (count < 0) throw QueryException('offset($count) must not be negative.');
     return _copy(_spec.copyWith(offset: count));
   }
+
+  /// Resumes after [cursor], the marker from the previous [page].
+  ///
+  /// Prefer this to [offset] for scrolling: it seeks straight to the position
+  /// instead of counting past everything before it, so the thousandth page
+  /// costs what the first one did. It is also stable — rows inserted while the
+  /// user scrolls cannot make a page repeat or skip an item.
+  MongoQuery startAfter(QueryCursor cursor) =>
+      _copy(_spec.copyWith(startAfter: cursor));
+
+  /// Fetches one page, plus the cursor for the next.
+  ///
+  /// ```dart
+  /// var page = await todos.orderBy('created_at').limit(20).page();
+  /// while (page.hasMore) {
+  ///   page = await todos.orderBy('created_at').limit(20)
+  ///       .startAfter(page.cursor!).page();
+  /// }
+  /// ```
+  ///
+  /// For a scrolling list, [pager] does this bookkeeping for you.
+  Future<Page<Map<String, Object?>>> page() => _runner.page(_schema, _spec);
+
+  /// A pager over this query, for infinite scroll. See [QueryPager].
+  QueryPager<Map<String, Object?>> pager({int pageSize = defaultPageSize}) =>
+      QueryPager<Map<String, Object?>>(
+        fetch: (cursor) async {
+          var query = limit(pageSize);
+          if (cursor != null) query = query.startAfter(cursor);
+          return query.page();
+        },
+      );
 
   /// Compiles the query to SQL. Exposed for testing.
   SqlFragment compile({bool count = false}) =>

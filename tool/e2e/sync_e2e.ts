@@ -326,6 +326,93 @@ await t('query caps the page size', async () => {
   assert.equal(res2.status, 400);
 });
 
+// ------------------------------------------------------------- pagination
+
+await t('keyset paging walks every document exactly once', async () => {
+  // Enough rows to need several pages, with a repeating sort value so the
+  // tiebreaker is exercised.
+  for (let i = 0; i < 30; i++) {
+    await push(alice, [{
+      op: 'put', collection: 'todos', id: `pg-${String(i).padStart(2, '0')}`,
+      data: { title: `page item ${i}`, done: i % 2 === 0 },
+    }]);
+  }
+
+  const seen: string[] = [];
+  let cursor: { values: unknown[]; id: string } | undefined;
+  for (let guard = 0; guard < 20; guard++) {
+    const body: Record<string, unknown> = {
+      collection: 'todos',
+      order: [{ field: 'title', descending: false }],
+      limit: 7,
+    };
+    if (cursor) body.startAfter = cursor;
+    const res = await query(alice, body);
+    assert.equal(res.status, 200, await res.clone().text());
+    const docs = ((await res.json()) as any).documents;
+    if (docs.length === 0) break;
+    seen.push(...docs.map((d: any) => d.id));
+    const last = docs[docs.length - 1];
+    cursor = { values: [last.title], id: last.id };
+    if (docs.length < 7) break;
+  }
+
+  const paged = seen.filter((id) => id.startsWith('pg-'));
+  assert.equal(new Set(paged).size, paged.length, 'no document repeated');
+  assert.equal(paged.length, 30, `expected all 30, got ${paged.length}`);
+});
+
+await t('descending paging walks backwards without loss', async () => {
+  const seen: string[] = [];
+  let cursor: { values: unknown[]; id: string } | undefined;
+  for (let guard = 0; guard < 20; guard++) {
+    const body: Record<string, unknown> = {
+      collection: 'todos',
+      filters: [{ field: 'title', op: 'gte', value: 'page item ' }],
+      order: [{ field: 'title', descending: true }],
+      limit: 9,
+    };
+    if (cursor) body.startAfter = cursor;
+    const docs = ((await (await query(alice, body)).json()) as any).documents;
+    if (docs.length === 0) break;
+    seen.push(...docs.map((d: any) => d.id));
+    const last = docs[docs.length - 1];
+    cursor = { values: [last.title], id: last.id };
+    if (docs.length < 9) break;
+  }
+  assert.equal(new Set(seen).size, seen.length, 'no document repeated');
+  const paged = seen.filter((id) => id.startsWith('pg-'));
+  assert.equal(new Set(paged).size, 30, `expected all 30, got ${paged.length}`);
+  assert.ok(paged[0] > paged[paged.length - 1], 'should descend');
+});
+
+await t('a cursor that does not match the orderBy is rejected', async () => {
+  const res = await query(alice, {
+    collection: 'todos',
+    order: [{ field: 'title', descending: false }],
+    startAfter: { values: ['a', 'b'], id: 'x' },
+  });
+  assert.equal(res.status, 400);
+});
+
+await t('a malformed cursor is rejected', async () => {
+  for (const startAfter of ['nope', 42, { id: 'x' }, { values: [] }]) {
+    const res = await query(alice, {
+      collection: 'todos',
+      order: [{ field: 'title', descending: false }],
+      startAfter,
+    });
+    assert.equal(res.status, 400, `should reject ${JSON.stringify(startAfter)}`);
+  }
+});
+
+await t('paging stays scoped to the caller', async () => {
+  const docs = ((await (await query(alice, {
+    collection: 'todos', order: [{ field: 'title', descending: false }], limit: 100,
+  })).json()) as any).documents;
+  assert.ok(!docs.some((d: any) => d.id === 'b1'), 'bob data must not appear');
+});
+
 // ---------------------------------------------------------------- /stream
 
 /** Opens the SSE stream and collects frames until `count` arrive. */

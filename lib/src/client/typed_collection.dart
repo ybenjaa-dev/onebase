@@ -1,3 +1,6 @@
+import '../query/cursor.dart';
+import '../query/pager.dart';
+import '../query/paging.dart';
 import '../query/query_builder.dart';
 import 'collection.dart';
 
@@ -128,6 +131,29 @@ class TypedQuery<T> {
 
   TypedQuery<T> offset(int count) =>
       TypedQuery<T>(_query.offset(count), _fromJson);
+
+  /// Resumes after [cursor]. See [MongoQuery.startAfter].
+  TypedQuery<T> startAfter(QueryCursor cursor) =>
+      TypedQuery<T>(_query.startAfter(cursor), _fromJson);
+
+  /// One page of typed results, plus the cursor for the next.
+  Future<Page<T>> page() async => (await _query.page()).map(_fromJson);
+
+  /// A pager over this query, for infinite scroll. See [QueryPager].
+  ///
+  /// ```dart
+  /// final pager = OnebaseDb.todos
+  ///     .where('done', isEqualTo: false)
+  ///     .orderBy('created_at', descending: true)
+  ///     .pager(pageSize: 20);
+  /// ```
+  QueryPager<T> pager({int pageSize = defaultPageSize}) => QueryPager<T>(
+    fetch: (cursor) async {
+      var query = _query.limit(pageSize);
+      if (cursor != null) query = query.startAfter(cursor);
+      return (await query.page()).map(_fromJson);
+    },
+  );
 
   Future<List<T>> find() async => [
     for (final document in await _query.find()) _fromJson(document),

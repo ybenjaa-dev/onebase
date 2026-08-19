@@ -83,5 +83,16 @@ Map<String, Object?> encodeQuery(MongoCollectionSchema schema, QuerySpec spec) {
     ],
     if (spec.limit != null) 'limit': spec.limit,
     if (spec.offset != null) 'offset': spec.offset,
+    // Sent as the raw values rather than the opaque string: the backend has to
+    // compare them against stored documents, so it needs them encoded the same
+    // way every other value is.
+    if (spec.startAfter case final cursor?)
+      'startAfter': {
+        'values': [
+          for (var i = 0; i < spec.order.length; i++)
+            encode(spec.order[i].$1, cursor.values[i]),
+        ],
+        'id': cursor.id,
+      },
   };
 }

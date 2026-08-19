@@ -25,6 +25,14 @@ SqlFragment resolveField(String field, MongoCollectionSchema schema) {
   }
 
   final root = segments.first;
+
+  // `id` is never declared in the schema but is a real column on every table,
+  // and paging sorts on it as the tiebreaker.
+  if (root == 'id') {
+    if (segments.length > 1) throw InvalidFieldNameException(field);
+    return const SqlFragment('"id"', []);
+  }
+
   final rootType = schema.fieldType(root);
 
   if (segments.length == 1) {

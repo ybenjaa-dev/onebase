@@ -1,7 +1,10 @@
 import '../client/sql_executor.dart';
+import '../errors.dart';
 import '../schema/schema.dart';
 import '../schema/value_codec.dart';
+import 'cursor.dart';
 import 'filter.dart';
+import 'paging.dart';
 import 'query_runner.dart';
 import 'query_spec.dart';
 
@@ -25,20 +28,28 @@ class LocalQueryRunner implements QueryRunner {
       count ? 'SELECT COUNT(*) AS c FROM ' : 'SELECT * FROM ',
     )..write('"${schema.name}"');
 
-    if (spec.filters.isNotEmpty) {
-      final conditions = <String>[];
-      for (final filter in spec.filters) {
-        final fragment = filter.compile(schema);
-        conditions.add(fragment.sql);
-        parameters.addAll(fragment.parameters);
-      }
+    final conditions = <String>[];
+    for (final filter in spec.filters) {
+      final fragment = filter.compile(schema);
+      conditions.add(fragment.sql);
+      parameters.addAll(fragment.parameters);
+    }
+
+    final cursor = spec.startAfter;
+    if (cursor != null) {
+      final keyset = _keysetCondition(schema, spec, cursor);
+      conditions.add(keyset.sql);
+      parameters.addAll(keyset.parameters);
+    }
+
+    if (conditions.isNotEmpty) {
       buffer
         ..write(' WHERE ')
         ..write(conditions.join(' AND '));
     }
 
     if (!count && spec.order.isNotEmpty) {
-      final terms = spec.order.map((entry) {
+      final terms = spec.effectiveOrder.map((entry) {
         final (field, descending) = entry;
         return '${resolveField(field, schema).sql}'
             '${descending ? ' DESC' : ' ASC'}';
@@ -62,6 +73,67 @@ class LocalQueryRunner implements QueryRunner {
     return SqlFragment(buffer.toString(), parameters);
   }
 
+  /// Builds the "everything after this row" predicate.
+  ///
+  /// For a sort on (a, b) it expands lexicographically:
+  ///
+  ///     a > ?  OR  (a = ? AND b > ?)  OR  (a = ? AND b = ? AND id > ?)
+  ///
+  /// which is exactly the set of rows the sort places after the cursor. An
+  /// index on the sort columns can seek straight to it, so the cost does not
+  /// grow with how far the reader has scrolled.
+  static SqlFragment _keysetCondition(
+    MongoCollectionSchema schema,
+    QuerySpec spec,
+    QueryCursor cursor,
+  ) {
+    final order = spec.effectiveOrder;
+    if (cursor.values.length != spec.order.length) {
+      throw QueryException(
+        'This cursor does not match the query it was used with.',
+        hint: 'A cursor is only valid for the same orderBy it came from.',
+      );
+    }
+    // effectiveOrder appends `id` only when the caller did not sort by it, so
+    // the trailing key comes from the cursor's id in that case and from its
+    // ordinary values when they already include it.
+    final values = [
+      for (var i = 0; i < order.length; i++)
+        i < cursor.values.length ? cursor.values[i] : cursor.id,
+    ];
+
+    Object? encode(String field, Object? value) {
+      if (field == 'id') return value;
+      return ValueCodec.encode(
+        value,
+        schema.fieldType(field),
+        field: field,
+        collection: schema.name,
+      );
+    }
+
+    final branches = <String>[];
+    final parameters = <Object?>[];
+    for (var i = 0; i < order.length; i++) {
+      final terms = <String>[];
+      for (var j = 0; j < i; j++) {
+        final (field, _) = order[j];
+        terms.add('${resolveField(field, schema).sql} = ?');
+        parameters.add(encode(field, values[j]));
+      }
+      final (field, descending) = order[i];
+      terms.add(
+        '${resolveField(field, schema).sql} ${descending ? '<' : '>'} ?',
+      );
+      parameters.add(encode(field, values[i]));
+      branches.add(
+        terms.length == 1 ? terms.single : '(${terms.join(' AND ')})',
+      );
+    }
+
+    return SqlFragment('(${branches.join(' OR ')})', parameters);
+  }
+
   @override
   Future<List<Map<String, Object?>>> find(
     MongoCollectionSchema schema,
@@ -77,6 +149,15 @@ class LocalQueryRunner implements QueryRunner {
     final query = compile(schema, spec, count: true);
     final row = await _executor.getOptional(query.sql, query.parameters);
     return (row?['c'] as int?) ?? 0;
+  }
+
+  @override
+  Future<Page<Map<String, Object?>>> page(
+    MongoCollectionSchema schema,
+    QuerySpec spec,
+  ) async {
+    final rows = await find(schema, pageSpec(spec));
+    return buildPage(schema, spec, rows);
   }
 
   @override

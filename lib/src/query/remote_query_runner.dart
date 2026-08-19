@@ -3,6 +3,8 @@ import 'dart:async';
 import '../schema/schema.dart';
 import '../schema/value_codec.dart';
 import '../sync/sync_api.dart';
+import 'cursor.dart';
+import 'paging.dart';
 import 'query_runner.dart';
 import 'query_spec.dart';
 import 'query_wire.dart';
@@ -40,6 +42,15 @@ class RemoteQueryRunner implements QueryRunner {
   @override
   Future<int> count(MongoCollectionSchema schema, QuerySpec spec) =>
       _api.queryCount(encodeQuery(schema, spec));
+
+  @override
+  Future<Page<Map<String, Object?>>> page(
+    MongoCollectionSchema schema,
+    QuerySpec spec,
+  ) async {
+    final rows = await find(schema, pageSpec(spec));
+    return buildPage(schema, spec, rows);
+  }
 
   @override
   Future<Map<String, Object?>?> findById(

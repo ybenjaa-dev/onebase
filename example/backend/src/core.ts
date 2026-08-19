@@ -977,6 +977,7 @@ export async function handleQuery(
   }
 
   const sort: Record<string, 1 | -1> = {};
+  const orderFields: { path: string; descending: boolean }[] = [];
   const rawOrder = body?.order ?? [];
   if (!Array.isArray(rawOrder)) {
     return json(400, { error: 'order must be an array' });
@@ -991,6 +992,59 @@ export async function handleQuery(
       return json(400, { error: `cannot sort by ${String(field)}` });
     }
     sort[path] = descending === true ? -1 : 1;
+    orderFields.push({ path, descending: descending === true });
+  }
+
+  // `_id` breaks ties so the order is total. Without it two documents sharing
+  // a sort value come back in an arbitrary order, and a page boundary between
+  // them can repeat or drop a row.
+  if (sort._id === undefined) {
+    sort._id = orderFields.length > 0 && orderFields[orderFields.length - 1].descending ? -1 : 1;
+  }
+
+  // Keyset pagination: seek straight to the position rather than counting past
+  // everything before it, so deep pages cost what shallow ones do.
+  const rawCursor = body?.startAfter;
+  if (rawCursor !== undefined) {
+    if (typeof rawCursor !== 'object' || rawCursor === null) {
+      return json(400, { error: 'startAfter must be a cursor object' });
+    }
+    const { values, id } = rawCursor as { values?: unknown; id?: unknown };
+    if (!Array.isArray(values) || typeof id !== 'string') {
+      return json(400, { error: 'startAfter must carry values and an id' });
+    }
+    if (values.length !== orderFields.length) {
+      return json(400, {
+        error: 'startAfter does not match this query\'s orderBy',
+      });
+    }
+
+    const keys = [
+      ...orderFields.map((field, index) => ({
+        path: field.path,
+        descending: field.descending,
+        value: queryValue(field.path, values[index], spec),
+      })),
+      {
+        path: '_id',
+        descending: sort._id === -1,
+        value: idValue(id),
+      },
+    ];
+
+    // Lexicographic expansion: a > v, or a = v and b > w, and so on.
+    const branches: Record<string, unknown>[] = [];
+    for (let i = 0; i < keys.length; i++) {
+      const branch: Record<string, unknown> = {};
+      for (let j = 0; j < i; j++) branch[keys[j].path] = keys[j].value;
+      branch[keys[i].path] = {
+        [keys[i].descending ? '$lt' : '$gt']: keys[i].value,
+      };
+      branches.push(branch);
+    }
+    if (branches.length > 0) {
+      filter.$and = [...((filter.$and as unknown[]) ?? []), { $or: branches }];
+    }
   }
 
   const rawLimit = body?.limit;

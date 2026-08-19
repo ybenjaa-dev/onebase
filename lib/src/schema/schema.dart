@@ -149,6 +149,8 @@ class MongoCollectionSchema {
   }
 
   MongoFieldType fieldType(String field) {
+    // Implicit on every collection, and sortable/filterable like any column.
+    if (field == 'id') return MongoFieldType.text;
     final type = fields[field];
     if (type == null) {
       throw UnknownFieldException(field, name, fields.keys);

@@ -12,6 +12,9 @@ export 'src/client/config.dart';
 export 'src/client/onebase.dart';
 export 'src/client/typed_collection.dart';
 export 'src/errors.dart';
+export 'src/query/cursor.dart' show Page, QueryCursor;
+export 'src/query/pager.dart' show QueryPager;
+export 'src/query/paging.dart' show defaultPageSize;
 export 'src/query/query_builder.dart';
 export 'src/schema/schema.dart';
 export 'src/schema/storage_schema.dart'

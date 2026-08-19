@@ -1,4 +1,5 @@
 import '../schema/schema.dart';
+import 'cursor.dart';
 import 'query_spec.dart';
 
 /// Executes a [QuerySpec] against whatever holds the data.
@@ -13,6 +14,12 @@ abstract interface class QueryRunner {
   );
 
   Future<int> count(MongoCollectionSchema schema, QuerySpec spec);
+
+  /// One page, plus the cursor for the next one.
+  Future<Page<Map<String, Object?>>> page(
+    MongoCollectionSchema schema,
+    QuerySpec spec,
+  );
 
   /// A stream that re-emits whenever the result set changes.
   Stream<List<Map<String, Object?>>> watch(
