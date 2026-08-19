@@ -3,7 +3,7 @@ description: >-
   Firebase for Flutter on MongoDB and S3: offline-first reactive collections,
   realtime sync and file storage, from one package and one tiny backend.
 version: 0.3.0
-repository: https://github.com/soft2scale/onebase
+repository: https://github.com/ybenjaa-dev/onebase
 topics:
   - mongodb
   - storage
