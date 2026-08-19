@@ -2,29 +2,16 @@
 
 ## 0.1.1
 
-Bug fixes and dependency maintenance. No new features.
+Maintenance release.
 
-### Fixed
-
-- `--doctor --api-url` never worked. The health check returned the response
-  body's future from inside a `try`, so the `finally` closed the HTTP client
-  before the body had been read — a healthy backend reported as unreachable.
-- A collection named in snake_case generated an invalid Dart identifier:
-  `family_members` produced `OnebaseDb.family_members`, which does not
-  compile. Accessors are now camelCased (`OnebaseDb.familyMembers`); the
-  collection name on the wire is unchanged.
-
-### Changed
-
-- Dropped `sqlite3_flutter_libs`, which its author has discontinued ("not used
-  anymore, update to version 3.x of package:sqlite3"). The native SQLite
-  library now ships with `sqlite3` itself, which is where that capability
-  moved.
-
-  This raises the floor to Dart 3.10 / Flutter 3.38, since that is the version
-  that gained it. `pub` will simply keep older projects on 0.1.0 rather than
-  failing.
-- Every dependency updated to its latest release, including the generated
+- `--doctor --api-url` reports backend health correctly.
+- Collection accessors are camelCased, so a collection named `family_members`
+  is reached as `OnebaseDb.familyMembers`. The name on the wire is unchanged.
+- The native SQLite library now comes from `sqlite3` itself rather than the
+  separate `sqlite3_flutter_libs` package, which its author has discontinued.
+  This sets the floor at Dart 3.10 / Flutter 3.38; `pub` keeps older projects
+  on 0.1.0.
+- Every dependency moved to its latest release, including the generated
   backend's: jose 6, the MongoDB driver 7, `@types/node` 26, `flutter_lints` 6.
 
 ## 0.1.0
