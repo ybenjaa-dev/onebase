@@ -5,12 +5,35 @@ import { presign, type S3Config } from './s3.js';
 
 type FieldType = 'text' | 'int' | 'double' | 'bool' | 'datetime' | 'json';
 
+/** Who, inside a group, may write a group-scoped collection. */
+type GroupWrite = 'owner' | 'member' | 'admin' | 'none';
+
+interface ScopeSpec {
+  /** Name of the membership that decides the caller's groups. */
+  membership: string;
+  /** Field holding the group id, or `id` when the document *is* the group. */
+  field: string;
+  write: GroupWrite;
+}
+
 interface CollectionSpec {
   ownerField?: string;
+  /** Present when the collection belongs to a group rather than one user. */
+  scope?: ScopeSpec;
   /** Fields declared with a trailing `!` in onebase.yaml. */
   required?: string[];
   fields: Record<string, FieldType>;
 }
+
+interface MembershipSpec {
+  collection: string;
+  userField: string;
+  groupField: string;
+  roleField?: string;
+  adminRole: string;
+}
+
+const MEMBERSHIPS: Record<string, MembershipSpec> = {};
 
 const COLLECTIONS: Record<string, CollectionSpec> = {
   "todos": {
@@ -96,6 +119,9 @@ const RESERVED_FIELDS = new Set([UPDATED_AT, '_id', 'id', '_deleted']);
 
 /** Documents per pull page. */
 const PULL_LIMIT = 500;
+
+/** Ceiling on how many groups one caller can be in, so the lookup is bounded. */
+const MAX_GROUPS_PER_USER = 1000;
 
 /** Default and maximum page size for `/query` (online mode). */
 const QUERY_DEFAULT_LIMIT = 100;
@@ -488,6 +514,130 @@ function parseOp(raw: unknown): UploadOp | null {
   return { op, collection, id, data: data as Record<string, unknown> | undefined };
 }
 
+/**
+ * The groups a caller belongs to, resolved once per request.
+ *
+ * Every read filter and write check needs this, so looking it up per operation
+ * would mean a database round trip per document in a batch. The cache is
+ * per-request on purpose: membership changes take effect on the next request
+ * rather than being held across them.
+ */
+class GroupResolver {
+  private readonly cache = new Map<string, Promise<GroupMembership>>();
+
+  constructor(
+    private readonly db: Db,
+    private readonly userId: string,
+  ) {}
+
+  /** Group ids the caller belongs to, and the subset where they are admin. */
+  memberships(membership: string): Promise<GroupMembership> {
+    const cached = this.cache.get(membership);
+    if (cached) return cached;
+
+    const spec = MEMBERSHIPS[membership];
+    const resolved = (async (): Promise<GroupMembership> => {
+      if (!spec) return { groups: [], adminGroups: [] };
+
+      const projection: Record<string, 1> = { [spec.groupField]: 1 };
+      if (spec.roleField) projection[spec.roleField] = 1;
+
+      const rows = await this.db
+        .collection(spec.collection)
+        .find({ [spec.userField]: this.userId }, { projection })
+        .limit(MAX_GROUPS_PER_USER)
+        .toArray();
+
+      const groups: string[] = [];
+      const adminGroups: string[] = [];
+      for (const row of rows) {
+        const group = row[spec.groupField];
+        if (typeof group !== 'string' && typeof group !== 'number') continue;
+        const id = String(group);
+        groups.push(id);
+        if (spec.roleField && row[spec.roleField] === spec.adminRole) {
+          adminGroups.push(id);
+        }
+      }
+      return { groups, adminGroups };
+    })();
+
+    this.cache.set(membership, resolved);
+    return resolved;
+  }
+}
+
+interface GroupMembership {
+  groups: string[];
+  adminGroups: string[];
+}
+
+/** The field a group-scoped collection stores its group id in. */
+function scopeField(scope: ScopeSpec): string {
+  return scope.field === 'id' ? '_id' : scope.field;
+}
+
+/**
+ * Narrows a read to the documents a caller may see.
+ *
+ * Returns null when they may see nothing, which callers turn into an empty
+ * result rather than an unfiltered query — the distinction that stops "no
+ * groups" from meaning "every document".
+ */
+async function readScope(
+  spec: CollectionSpec,
+  userId: string,
+  resolver: GroupResolver,
+): Promise<Record<string, unknown> | null> {
+  if (spec.scope) {
+    const { groups } = await resolver.memberships(spec.scope.membership);
+    if (groups.length === 0) return null;
+    return { [scopeField(spec.scope)]: { $in: groups } };
+  }
+  return spec.ownerField ? { [spec.ownerField]: userId } : {};
+}
+
+/** Why a write was refused, or null when it is allowed. */
+async function groupWriteRefusal(
+  spec: CollectionSpec,
+  op: UploadOp,
+  userId: string,
+  resolver: GroupResolver,
+  existing: Record<string, unknown> | null,
+): Promise<string | null> {
+  const scope = spec.scope;
+  if (!scope) return null;
+  if (scope.write === 'none') {
+    return 'this collection is read-only for clients';
+  }
+
+  const { groups, adminGroups } = await resolver.memberships(scope.membership);
+  const field = scopeField(scope);
+
+  // For an update or delete the group comes from the stored document; for an
+  // insert it comes from the payload, because there is nothing stored yet.
+  const target =
+    existing !== null
+      ? String(existing[field] ?? '')
+      : String(
+          (field === '_id' ? op.id : (op.data ?? {})[scope.field]) ?? '',
+        );
+
+  if (!target) return `missing ${scope.field}, which names the group`;
+  if (!groups.includes(target)) return 'you are not a member of that group';
+  if (scope.write === 'admin' && !adminGroups.includes(target)) {
+    return 'only a group admin may write here';
+  }
+  if (scope.write === 'owner') {
+    const owner = spec.ownerField;
+    if (!owner) return 'write: owner needs an owner_field';
+    // The group grants read; only the document's own user may change it.
+    const currentOwner = existing !== null ? existing[owner] : userId;
+    if (currentOwner !== userId) return 'this document belongs to another member';
+  }
+  return null;
+}
+
 function tombstoneId(collection: string, id: string): string {
   return `${collection}:${id}`;
 }
@@ -497,6 +647,7 @@ async function applyOps(
   userId: string,
   rawOps: unknown[],
   session: ClientSession | undefined,
+  resolver: GroupResolver,
 ): Promise<ApplyResult> {
   const skipped: SkippedOp[] = [];
   const dropped: DroppedFields[] = [];
@@ -526,9 +677,23 @@ async function applyOps(
 
     const collection = db.collection(op.collection);
     const owner = spec.ownerField;
-    const scopedFilter = owner
-      ? { ...idFilter(op.id), [owner]: userId }
-      : idFilter(op.id);
+
+    // A group-scoped document is guarded by membership rather than by the
+    // owner field, so the filter has to be resolved against the stored row.
+    if (spec.scope) {
+      const stored = await collection.findOne(idFilter(op.id), { session });
+      const refusal = await groupWriteRefusal(spec, op, userId, resolver, stored);
+      if (refusal) {
+        skipped.push({ id: op.id, collection: op.collection, reason: refusal });
+        continue;
+      }
+    }
+
+    const scopedFilter = spec.scope
+      ? idFilter(op.id)
+      : owner
+        ? { ...idFilter(op.id), [owner]: userId }
+        : idFilter(op.id);
 
     try {
       if (op.op === 'put') {
@@ -592,6 +757,11 @@ async function applyOps(
           dropped.push({ id: op.id, collection: op.collection, fields: unknownFields });
         }
         if (owner) delete changes[owner]; // ownership is immutable
+        // Moving a document between groups would hand it to people who were
+        // never allowed to see it.
+        if (spec.scope && spec.scope.field !== 'id') {
+          delete changes[spec.scope.field];
+        }
         if (Object.keys(changes).length === 0) {
           applied++;
           continue;
@@ -612,6 +782,11 @@ async function applyOps(
           applied++;
         }
       } else {
+        // Read before deleting: the tombstone has to carry the group, and
+        // after the delete there is nothing left to read it from.
+        const existingForTombstone = spec.scope
+          ? await collection.findOne(idFilter(op.id), { session })
+          : null;
         const deleted = await collection.deleteOne(scopedFilter, { session });
         if (deleted.deletedCount === 0) {
           skipped.push({
@@ -628,6 +803,11 @@ async function applyOps(
               collection: op.collection,
               doc_id: op.id,
               owner: owner ? userId : null,
+              // Recorded so the delete reaches everyone who could see the
+              // document, not just its author.
+              group: spec.scope && existingForTombstone
+                ? String(existingForTombstone[scopeField(spec.scope)] ?? '')
+                : null,
               deleted_at: now,
             },
             { upsert: true, session },
@@ -662,13 +842,20 @@ async function applyUpload(
   dbName: string,
   userId: string,
   rawOps: unknown[],
+  resolver: GroupResolver,
 ): Promise<ApplyResult> {
   if (transactionsSupported) {
     const session = client.startSession();
     try {
       let result: ApplyResult | null = null;
       await session.withTransaction(async () => {
-        result = await applyOps(client.db(dbName), userId, rawOps, session);
+        result = await applyOps(
+          client.db(dbName),
+          userId,
+          rawOps,
+          session,
+          resolver,
+        );
       });
       if (result) return result;
     } catch (error) {
@@ -682,7 +869,7 @@ async function applyUpload(
       await session.endSession();
     }
   }
-  return applyOps(client.db(dbName), userId, rawOps, undefined);
+  return applyOps(client.db(dbName), userId, rawOps, undefined, resolver);
 }
 
 let mongoClient: Promise<MongoClient> | null = null;
@@ -804,7 +991,14 @@ export async function handlePush(
   try {
     const client = await getMongo(env);
     await ensureIndexes(client, env);
-    const result = await applyUpload(client, env.MONGO_DB, auth.userId, ops);
+    const db = client.db(env.MONGO_DB);
+    const result = await applyUpload(
+      client,
+      env.MONGO_DB,
+      auth.userId,
+      ops,
+      new GroupResolver(db, auth.userId),
+    );
     if (result.skipped.length > 0) {
       console.warn('onebase push: skipped ops', JSON.stringify(result.skipped));
     }
@@ -864,7 +1058,12 @@ export async function handlePull(
       [field]: since ? { $gt: since, $lte: readUpTo } : { $lte: readUpTo },
     });
 
-    const scope: Record<string, unknown> = owner ? { [owner]: auth.userId } : {};
+    const resolver = new GroupResolver(db, auth.userId);
+    const scope = await readScope(spec, auth.userId, resolver);
+    if (scope === null) {
+      // Belongs to no group, so there is nothing to sync — not everything.
+      return json(200, { documents: [], cursor: rawSince ?? null, has_more: false });
+    }
 
     const documents = await db
       .collection(name)
@@ -874,7 +1073,12 @@ export async function handlePull(
       .toArray();
 
     const tombstoneFilter: Record<string, unknown> = { collection: name };
-    if (owner) tombstoneFilter.owner = auth.userId;
+    if (spec.scope) {
+      const { groups } = await resolver.memberships(spec.scope.membership);
+      tombstoneFilter.group = { $in: groups };
+    } else if (owner) {
+      tombstoneFilter.owner = auth.userId;
+    }
 
     const tombstones = await db
       .collection(TOMBSTONES)
@@ -1010,7 +1214,14 @@ export async function handleQuery(
   }
   const spec = COLLECTIONS[name];
   const owner = spec.ownerField;
-  const filter: Record<string, unknown> = owner ? { [owner]: auth.userId } : {};
+
+  const queryDb = (await getMongo(env)).db(env.MONGO_DB);
+  const queryResolver = new GroupResolver(queryDb, auth.userId);
+  const readable = await readScope(spec, auth.userId, queryResolver);
+  if (readable === null) {
+    return json(200, body?.count === true ? { count: 0 } : { documents: [] });
+  }
+  const filter: Record<string, unknown> = { ...readable };
 
   // Single-document fetch by id.
   if (body?.id !== undefined) {
@@ -1199,6 +1410,18 @@ export async function handleStream(
   const db = client.db(env.MONGO_DB);
   const watched = [...names, TOMBSTONES];
 
+  // Resolved once, when the stream opens. A membership granted later reaches
+  // the device on its next reconnect or periodic sync rather than mid-stream,
+  // which keeps the per-event check a set lookup instead of a query.
+  const streamResolver = new GroupResolver(db, auth.userId);
+  const streamGroups = new Set<string>();
+  for (const name of names) {
+    const scope = COLLECTIONS[name]?.scope;
+    if (!scope) continue;
+    const { groups } = await streamResolver.memberships(scope.membership);
+    for (const group of groups) streamGroups.add(group);
+  }
+
   const changes = db.watch(
     [
       {
@@ -1259,8 +1482,12 @@ export async function handleStream(
           const collection = String(full.collection ?? '');
           if (!names.includes(collection)) return;
           const spec = COLLECTIONS[collection];
-          // Shared collections have no owner on the tombstone.
-          if (spec.ownerField && full.owner !== auth.userId) return;
+          if (spec.scope) {
+            if (!streamGroups.has(String(full.group ?? ''))) return;
+          } else if (spec.ownerField && full.owner !== auth.userId) {
+            // Shared collections have no owner on the tombstone.
+            return;
+          }
           send({
             collection,
             document: { id: String(full.doc_id), _deleted: true },
@@ -1270,9 +1497,14 @@ export async function handleStream(
 
         const spec = COLLECTIONS[namespace];
         if (!spec) return;
-        // Ownership is re-checked here, not just in the pipeline: this is the
-        // last line before another user's document would leave the process.
-        if (spec.ownerField && full[spec.ownerField] !== auth.userId) return;
+        // Re-checked here, not just in the pipeline: this is the last line
+        // before another user's document would leave the process.
+        if (spec.scope) {
+          const group = String(full[scopeField(spec.scope)] ?? '');
+          if (!streamGroups.has(group)) return;
+        } else if (spec.ownerField && full[spec.ownerField] !== auth.userId) {
+          return;
+        }
         send({ collection: namespace, document: projectDocument(full, spec) });
       });
 

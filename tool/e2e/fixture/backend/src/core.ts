@@ -1,80 +1,6 @@
-import 'dart:convert';
-
-import '../../schema/schema.dart';
-
-/// Builds the `COLLECTIONS` TypeScript constant from the schema: the upload
-/// endpoint needs the owner field (per-user enforcement) and the field types
-/// (both to convert client values into proper BSON and to reject fields the
-/// schema never declared).
-String buildCollectionsTs(OnebaseSchema schema) {
-  final spec = {
-    for (final collection in schema.collections.values)
-      collection.name: {
-        if (collection.ownerField != null) 'ownerField': collection.ownerField,
-        if (collection.scope case final scope?)
-          'scope': {
-            'membership': scope.membership,
-            'field': scope.field,
-            'write': scope.write.yamlName,
-          },
-        if (collection.requiredFields.isNotEmpty)
-          'required': collection.requiredFields.toList()..sort(),
-        'fields': {
-          for (final MapEntry(:key, :value) in collection.fields.entries)
-            key: value.yamlName,
-        },
-      },
-  };
-  return const JsonEncoder.withIndent('  ').convert(spec);
-}
-
-/// Builds the `STORAGE` TypeScript constant: the buckets the app declared,
-/// with the rules the backend enforces before it will sign anything.
-String buildStorageTs(OnebaseSchema schema) {
-  final spec = {
-    for (final bucket in schema.storage.buckets.values)
-      bucket.name: {
-        'access': bucket.access.yamlName,
-        if (bucket.maxSizeBytes != null) 'maxSize': bucket.maxSizeBytes,
-        if (bucket.contentTypes.isNotEmpty) 'contentTypes': bucket.contentTypes,
-      },
-  };
-  return const JsonEncoder.withIndent('  ').convert(spec);
-}
-
-/// Builds the `MEMBERSHIPS` constant: how the backend discovers which groups
-/// a caller belongs to.
-String buildMembershipsTs(OnebaseSchema schema) {
-  final spec = {
-    for (final membership in schema.memberships.values)
-      membership.name: {
-        'collection': membership.collection,
-        'userField': membership.userField,
-        'groupField': membership.groupField,
-        if (membership.roleField != null) 'roleField': membership.roleField,
-        'adminRole': membership.adminRole,
-      },
-  };
-  return const JsonEncoder.withIndent('  ').convert(spec);
-}
-
-/// Imports every platform needs from the MongoDB and jose drivers, given a
-/// module specifier prefix (`''` for node resolution, `'npm:'` for Deno).
-String backendImports({required String mongodb, required String jose}) =>
-    "import { MongoClient, ObjectId } from '$mongodb';\n"
-    "import type { ClientSession, Db } from '$mongodb';\n"
-    "import { jwtVerify, createRemoteJWKSet, SignJWT } from '$jose';";
-
-/// Platform-neutral core of the generated backend (Web-standard
-/// Request/Response). Placeholders: `__IMPORTS__`, `__COLLECTIONS__`.
-///
-/// Response-code contract the sync engine relies on:
-/// - 2xx even for validation problems (reported in `skipped`) — a permanent
-///   non-2xx would block the client's upload queue forever;
-/// - 5xx only for transient/infrastructure failures, which clients retry;
-/// - 401 for auth failures, making the client refresh its token.
-const backendCoreTs = r'''
-__IMPORTS__
+import { MongoClient, ObjectId } from 'mongodb';
+import type { ClientSession, Db } from 'mongodb';
+import { jwtVerify, createRemoteJWKSet, SignJWT } from 'jose';
 import { presign, type S3Config } from './s3.js';
 
 type FieldType = 'text' | 'int' | 'double' | 'bool' | 'datetime' | 'json';
@@ -107,9 +33,76 @@ interface MembershipSpec {
   adminRole: string;
 }
 
-const MEMBERSHIPS: Record<string, MembershipSpec> = __MEMBERSHIPS__;
+const MEMBERSHIPS: Record<string, MembershipSpec> = {
+  "family": {
+    "collection": "family_members",
+    "userField": "user_id",
+    "groupField": "family_id",
+    "roleField": "role",
+    "adminRole": "admin"
+  }
+};
 
-const COLLECTIONS: Record<string, CollectionSpec> = __COLLECTIONS__;
+const COLLECTIONS: Record<string, CollectionSpec> = {
+  "family_members": {
+    "required": [
+      "family_id",
+      "user_id"
+    ],
+    "fields": {
+      "family_id": "text",
+      "user_id": "text",
+      "role": "text"
+    }
+  },
+  "chores": {
+    "scope": {
+      "membership": "family",
+      "field": "family_id",
+      "write": "member"
+    },
+    "required": [
+      "family_id",
+      "title"
+    ],
+    "fields": {
+      "title": "text",
+      "family_id": "text",
+      "owner_id": "text"
+    }
+  },
+  "family_settings": {
+    "scope": {
+      "membership": "family",
+      "field": "family_id",
+      "write": "admin"
+    },
+    "required": [
+      "family_id"
+    ],
+    "fields": {
+      "family_id": "text",
+      "quiet_hours": "text"
+    }
+  },
+  "diaries": {
+    "ownerField": "owner_id",
+    "scope": {
+      "membership": "family",
+      "field": "family_id",
+      "write": "owner"
+    },
+    "required": [
+      "family_id",
+      "owner_id"
+    ],
+    "fields": {
+      "family_id": "text",
+      "owner_id": "text",
+      "entry": "text"
+    }
+  }
+};
 
 interface BucketSpec {
   access: 'private' | 'shared';
@@ -117,7 +110,7 @@ interface BucketSpec {
   contentTypes?: string[];
 }
 
-const STORAGE: Record<string, BucketSpec> = __STORAGE__;
+const STORAGE: Record<string, BucketSpec> = {};
 
 /** Metadata for uploaded files. Keyed by the object key, so it is unique. */
 const FILES = '_onebase_files';
@@ -1976,14 +1969,4 @@ async function stableUserId(input: string): Promise<string> {
     .slice(0, 12)
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
-}
-''';
-
-/// Fills the core template for a concrete platform.
-String renderBackendCore(OnebaseSchema schema, {required String imports}) {
-  return backendCoreTs
-      .replaceFirst('__IMPORTS__', imports)
-      .replaceFirst('__COLLECTIONS__', buildCollectionsTs(schema))
-      .replaceFirst('__STORAGE__', buildStorageTs(schema))
-      .replaceFirst('__MEMBERSHIPS__', buildMembershipsTs(schema));
 }

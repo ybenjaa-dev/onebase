@@ -96,7 +96,7 @@ collections:
 
     test('pull is owner-scoped and paged', () {
       final core = generateBackendFiles(schema)['src/core.ts']!;
-      expect(core, contains('const scope: Record<string, unknown> = owner'));
+      expect(core, contains('readScope(spec, auth.userId, resolver)'));
       expect(core, contains('.limit(PULL_LIMIT)'));
       expect(core, contains('has_more'));
     });
@@ -171,6 +171,48 @@ collections:
       final core = generateBackendFiles(schema)['src/core.ts']!;
       expect(core, contains('function parseOp('));
       expect(core, contains('malformed op'));
+    });
+
+    test('group-scoped collections are enforced server-side', () {
+      final grouped = parseSchemaYaml('''
+memberships:
+  family:
+    collection: family_members
+    user_field: user_id
+    group_field: family_id
+    role_field: role
+
+collections:
+  family_members:
+    shared: true
+    fields:
+      family_id: text!
+      user_id: text!
+      role: text
+
+  chores:
+    scope:
+      membership: family
+      field: family_id
+      write: admin
+    fields:
+      title: text!
+      family_id: text!
+''');
+      final files = generateBackendFiles(grouped);
+      final core = files['src/core.ts']!;
+
+      // The rules travel with the generated backend, not the client.
+      expect(core, contains('"membership": "family"'));
+      expect(core, contains('"write": "admin"'));
+      expect(core, contains('"collection": "family_members"'));
+
+      expect(core, contains('class GroupResolver'));
+      expect(core, contains('groupWriteRefusal'));
+      // Belonging to no group must mean nothing, not everything.
+      expect(core, contains('if (groups.length === 0) return null;'));
+      // Moving a document between groups would hand it to outsiders.
+      expect(core, contains('delete changes[spec.scope.field];'));
     });
 
     test('every host adapter validates config through readEnv', () {

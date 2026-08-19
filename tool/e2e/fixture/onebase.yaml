@@ -1,0 +1,45 @@
+memberships:
+  family:
+    collection: family_members
+    user_field: user_id
+    group_field: family_id
+    role_field: role
+    admin_role: admin
+
+collections:
+  family_members:
+    shared: true
+    fields:
+      family_id: text!
+      user_id: text!
+      role: text
+
+  chores:
+    scope:
+      membership: family
+      field: family_id
+      write: member
+    fields:
+      title: text!
+      family_id: text!
+      owner_id: text
+
+  family_settings:
+    scope:
+      membership: family
+      field: family_id
+      write: admin
+    fields:
+      family_id: text!
+      quiet_hours: text
+
+  diaries:
+    owner_field: owner_id
+    scope:
+      membership: family
+      field: family_id
+      write: owner
+    fields:
+      family_id: text!
+      owner_id: text!
+      entry: text
