@@ -4,7 +4,10 @@
   "type": "module",
   "scripts": {
     "pretest": "npm --prefix ../../example/backend install --silent",
-    "test": "tsx sync_e2e.ts"
+    "test": "tsx signer_e2e.ts && tsx sync_e2e.ts && tsx storage_e2e.ts",
+    "test:sync": "tsx sync_e2e.ts",
+    "test:storage": "tsx storage_e2e.ts",
+    "test:signer": "tsx signer_e2e.ts"
   },
   "devDependencies": {
     "jose": "^5.9.0",

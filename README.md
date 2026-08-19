@@ -1,7 +1,8 @@
 # mongobase
 
-**Firebase-like developer experience for MongoDB in Flutter.**
-Offline-first, reactive, per-user data — one package, one tiny backend.
+**Firebase for MongoDB in Flutter.**
+Offline-first data, realtime sync and file storage — one package, one tiny
+backend.
 
 MongoDB retired Realm, Atlas Device Sync and the Data API (EOL September 30,
 2025), leaving Flutter developers without an official "no backend" path to
@@ -62,6 +63,53 @@ flowchart LR
   to polling instead of breaking.
 - **No credentials in the app.** The client knows one URL and the signed-in
   user's JWT. MongoDB is reachable only from your backend.
+
+## File storage
+
+Declare buckets next to your collections:
+
+```yaml
+storage:
+  avatars:
+    access: private          # each user only ever sees their own files
+    max_size: 5MB
+    content_types: [image/*]
+  brochures:
+    access: shared           # any signed-in user may read
+```
+
+```dart
+final ref = Mongobase.storage.ref('avatars/me.png');
+
+await ref.putData(await file.readAsBytes());
+final url = await ref.getDownloadUrl();   // hand straight to Image.network
+await ref.delete();
+
+final mine = await Mongobase.storage.bucket('avatars').list();
+```
+
+Bytes go **straight from the device to your object store** with a short-lived
+presigned URL — they never pass through your server, so a large upload costs it
+nothing and works fine on serverless.
+
+Works with anything S3-compatible: AWS S3, Cloudflare R2, MinIO, Backblaze B2,
+DigitalOcean Spaces. Set `S3_BUCKET`, `S3_ACCESS_KEY_ID`,
+`S3_SECRET_ACCESS_KEY` (plus `S3_ENDPOINT` for anything that isn't AWS). Leave
+them unset and the storage routes report 501 — storage is opt-in.
+
+What the backend guarantees:
+
+- A private bucket namespaces every key by user id, so one user cannot name —
+  let alone read — another user's file.
+- Paths that could escape that prefix (`..`, absolute, backslashes, control
+  characters) are rejected, never "cleaned up".
+- The signed URL pins the content type **and** length, so the object store
+  itself rejects an upload that exceeds what was approved.
+- In a shared bucket anyone may read, but only the uploader may overwrite or
+  delete.
+
+Uploads need a connection — unlike document writes they are not queued for
+later, because holding file bytes in the local database would bloat it.
 
 ## Offline or online — one line
 
@@ -268,7 +316,11 @@ final String id = await todos.insert(Todo(title: 'Ship it'));
   cases.
 - Removing a field from `mongobase.yaml` leaves its column in the local
   database so a downgrade cannot lose data.
-- File/attachment storage (S3-compatible) is not in this release.
+- **Uploads are not offline-queued.** Document writes survive with no network;
+  file uploads need a connection and throw if they can't reach the store.
+- File listings come from metadata the backend records, not from the object
+  store, so a file put there by some other tool won't appear until it is
+  uploaded through mongobase.
 
 ## Diagnosing a project
 

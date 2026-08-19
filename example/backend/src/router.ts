@@ -3,6 +3,11 @@ import {
   handlePull,
   handlePush,
   handleQuery,
+  handleStorageComplete,
+  handleStorageDelete,
+  handleStorageDownloadUrl,
+  handleStorageList,
+  handleStorageUploadUrl,
   handleStream,
   handleToken,
   json,
@@ -29,6 +34,16 @@ export async function route(request: Request, env: Env): Promise<Response> {
       return handleQuery(request, env);
     case '/stream':
       return handleStream(request, env);
+    case '/storage/upload-url':
+      return handleStorageUploadUrl(request, env);
+    case '/storage/complete':
+      return handleStorageComplete(request, env);
+    case '/storage/download-url':
+      return handleStorageDownloadUrl(request, env);
+    case '/storage/delete':
+      return handleStorageDelete(request, env);
+    case '/storage/list':
+      return handleStorageList(request, env);
     case '/token':
       return handleToken(request, env);
     case '/health':

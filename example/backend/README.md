@@ -9,6 +9,7 @@ framework:
 | `POST /pull` | returns documents changed since the client's watermark (offline mode) |
 | `POST /query` | runs a query server-side (online mode) |
 | `GET /stream` | realtime changes over Server-Sent Events |
+| `POST /storage/*` | presigned upload/download URLs, delete and list |
 | `POST /token` | dev-only email login (disabled unless `AUTH_MODE=dev`) |
 | `GET /health` | liveness probe |
 
@@ -60,6 +61,10 @@ Copy `.env.example` to `.env`.
 | `JWKS_URL` | `jwks` | Your auth provider's JWKS endpoint. Must be `https`. |
 | `JWT_AUDIENCE` | `jwks` | Expected `aud`. Required in `jwks` mode so tokens issued for other apps are rejected. |
 | `JWT_ISSUER` | no | Expected `iss`. Set it whenever your provider publishes one. |
+| `S3_BUCKET` | storage | Bucket name. Leave unset to disable file storage. |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | storage | Credentials with read/write on the bucket. |
+| `S3_REGION` | storage | AWS region, or `auto` for Cloudflare R2. |
+| `S3_ENDPOINT` | non-AWS | Endpoint for R2, MinIO, B2, Spaces. Implies path-style addressing. |
 
 ## What it guarantees
 
@@ -72,6 +77,11 @@ Copy `.env.example` to `.env`.
 - `query` accepts only a closed set of operators and fields declared in your
   schema, so a client filter can never become an arbitrary database query.
 - `stream` re-checks ownership on every event before it leaves the process.
+- File bytes never pass through this server: it signs short-lived URLs and the
+  device talks to your object store directly. Private buckets namespace keys by
+  user id, so one user cannot name another user's file, and the signed URL
+  pins the content type and length so an upload cannot exceed what was
+  approved.
 - Deletes are recorded in `_mongobase_tombstones` (TTL: 30 days) so other
   devices learn about them, leaving your collections clean.
 - Sync indexes are created automatically on first request.

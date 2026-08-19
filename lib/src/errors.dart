@@ -90,3 +90,9 @@ final class QueryException extends MongobaseException {
 final class SchemaParseException extends MongobaseException {
   const SchemaParseException(super.message, {super.hint});
 }
+
+/// Thrown when a file operation is rejected: a bad path, a bucket that is not
+/// declared, a file too large, or storage that is not configured.
+class StorageException extends MongobaseException {
+  const StorageException(super.message, {super.hint});
+}

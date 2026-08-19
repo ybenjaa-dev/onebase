@@ -2,6 +2,7 @@ import 'package:yaml/yaml.dart';
 
 import '../errors.dart';
 import 'schema.dart';
+import 'storage_schema.dart';
 
 /// Parses `mongobase.yaml` into a [MongobaseSchema].
 ///
@@ -121,5 +122,91 @@ MongobaseSchema parseSchemaYaml(String yamlSource) {
     ));
   }
 
-  return MongobaseSchema(collections);
+  return MongobaseSchema(collections, storage: _parseStorage(root['storage']));
+}
+
+/// Parses the optional `storage:` section.
+///
+/// ```yaml
+/// storage:
+///   avatars:
+///     access: private        # default; each user sees only their own files
+///     max_size: 5MB
+///     content_types: [image/*]
+///   brochures:
+///     access: shared         # any signed-in user may read
+/// ```
+StorageSchema _parseStorage(Object? node) {
+  if (node == null) return StorageSchema(const []);
+  if (node is! YamlMap) {
+    throw const SchemaParseException(
+      '`storage` must be a map of bucket names.',
+      hint: 'storage:\n  avatars:\n    access: private',
+    );
+  }
+
+  final buckets = <StorageBucketSchema>[];
+  for (final MapEntry(:key, :value) in node.entries) {
+    final name = key.toString();
+    if (value != null && value is! YamlMap) {
+      throw SchemaParseException('Storage bucket "$name" must be a map.');
+    }
+    final options = value as YamlMap?;
+
+    const knownKeys = {'access', 'max_size', 'content_types'};
+    final unknown = options?.keys
+            .map((k) => k.toString())
+            .where((k) => !knownKeys.contains(k)) ??
+        const <String>[];
+    if (unknown.isNotEmpty) {
+      throw SchemaParseException(
+        'Storage bucket "$name" has unknown option(s): ${unknown.join(', ')}.',
+        hint: 'Valid options: ${knownKeys.join(', ')}.',
+      );
+    }
+
+    final contentTypesNode = options?['content_types'];
+    final contentTypes = <String>[];
+    if (contentTypesNode != null) {
+      if (contentTypesNode is! YamlList) {
+        throw SchemaParseException(
+          '`content_types` of storage bucket "$name" must be a list.',
+          hint: 'content_types: [image/png, image/jpeg]',
+        );
+      }
+      contentTypes.addAll(contentTypesNode.map((v) => v.toString()));
+    }
+
+    buckets.add(StorageBucketSchema(
+      name,
+      access: StorageAccess.parse(
+          options?['access']?.toString() ?? StorageAccess.private.yamlName),
+      maxSizeBytes: _parseSize(options?['max_size'], name),
+      contentTypes: contentTypes,
+    ));
+  }
+  return StorageSchema(buckets);
+}
+
+/// Accepts a plain byte count or a friendly suffix: `5MB`, `500KB`, `2GB`.
+int? _parseSize(Object? value, String bucket) {
+  if (value == null) return null;
+  if (value is int) return value;
+
+  final text = value.toString().trim().toUpperCase();
+  final match = RegExp(r'^(\d+(?:\.\d+)?)\s*(B|KB|MB|GB)?$').firstMatch(text);
+  if (match == null) {
+    throw SchemaParseException(
+      '`max_size` of storage bucket "$bucket" is not a size: $value.',
+      hint: 'Use a number of bytes or a suffix, e.g. 5MB.',
+    );
+  }
+  final amount = double.parse(match.group(1)!);
+  final multiplier = switch (match.group(2)) {
+    'KB' => 1024,
+    'MB' => 1024 * 1024,
+    'GB' => 1024 * 1024 * 1024,
+    _ => 1,
+  };
+  return (amount * multiplier).round();
 }

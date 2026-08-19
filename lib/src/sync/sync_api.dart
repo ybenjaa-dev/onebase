@@ -178,6 +178,39 @@ class SyncApi {
     return _http.send(request);
   }
 
+  /// POSTs to a storage route and returns the decoded body.
+  Future<Map<String, Object?>> storage(
+          String route, Map<String, Object?> body) =>
+      _post('/storage/$route', body);
+
+  /// Uploads bytes straight to the object store with a presigned URL.
+  ///
+  /// This request carries no credentials of ours — the signature in the URL is
+  /// the authorization, and the headers must match what the backend signed.
+  Future<void> putSigned(
+    String url,
+    List<int> bytes,
+    Map<String, String> headers,
+  ) async {
+    final http.Response response;
+    try {
+      response = await _http.put(Uri.parse(url), headers: headers, body: bytes);
+    } on Object catch (error) {
+      throw StorageException(
+        'Could not reach the storage endpoint: $error',
+        hint: 'Uploads need a connection; they are not queued for later.',
+      );
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StorageException(
+        'The object store rejected the upload '
+        '(HTTP ${response.statusCode}): ${_snippet(response.body)}',
+        hint: 'Check the bucket credentials and CORS rules on your storage '
+            'provider.',
+      );
+    }
+  }
+
   void close() => _http.close();
 
   static String _snippet(String body) =>

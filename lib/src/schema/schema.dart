@@ -1,4 +1,5 @@
 import '../errors.dart';
+import 'storage_schema.dart';
 
 /// Field types supported in `mongobase.yaml` and the Dart schema.
 ///
@@ -157,16 +158,23 @@ class MongoCollectionSchema {
 /// Usually generated into `lib/mongobase_schema.g.dart` by
 /// `dart run mongobase:setup` from `mongobase.yaml`.
 class MongobaseSchema {
-  MongobaseSchema(List<MongoCollectionSchema> collections)
-      : collections = {
+  MongobaseSchema(
+    List<MongoCollectionSchema> collections, {
+    StorageSchema? storage,
+  })  : collections = {
           for (final collection in collections) collection.name: collection,
-        } {
+        },
+        storage = storage ?? StorageSchema(const []) {
     if (collections.length != this.collections.length) {
       throw const SchemaParseException('Duplicate collection names in schema.');
     }
   }
 
   final Map<String, MongoCollectionSchema> collections;
+
+  /// File buckets declared under `storage:`. Empty when the app stores no
+  /// files.
+  final StorageSchema storage;
 
   MongoCollectionSchema collection(String name) {
     final schema = collections[name];

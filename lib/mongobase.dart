@@ -14,5 +14,9 @@ export 'src/client/typed_collection.dart';
 export 'src/errors.dart';
 export 'src/query/query_builder.dart';
 export 'src/schema/schema.dart';
+export 'src/schema/storage_schema.dart'
+    show StorageAccess, StorageBucketSchema, StorageSchema;
+export 'src/storage/storage.dart'
+    show MongobaseStorage, StorageBucketRef, StorageFile, StorageRef;
 export 'src/sync/sync_engine.dart' show SyncSkippedWrites;
 export 'src/sync/sync_status.dart';

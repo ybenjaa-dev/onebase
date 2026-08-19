@@ -21,3 +21,14 @@ collections:
     fields:
       name: text!
       color: text
+
+# File storage. Buckets follow the same rule as collections: private means
+# each user only ever sees their own files.
+storage:
+  avatars:
+    access: private
+    max_size: 2MB
+    content_types: [image/png, image/jpeg, image/webp]
+
+  brochures:
+    access: shared

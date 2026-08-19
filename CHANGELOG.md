@@ -46,11 +46,29 @@ realtime is real, and your models are generated.
 - `model:` overrides the generated class name when the default singularization
   reads wrong.
 
+### File storage
+
+- Buckets are declared under `storage:` in `mongobase.yaml`, with the same
+  private/shared model as collections:
+  `Mongobase.storage.ref('avatars/me.png').putData(bytes)`.
+- Bytes go straight from the device to your object store through a presigned
+  URL, so they never pass through the backend. Works with anything
+  S3-compatible — AWS S3, Cloudflare R2, MinIO, Backblaze B2, Spaces.
+- Private buckets namespace object keys by user id, so one user cannot name or
+  read another user's file. Path traversal is rejected rather than sanitized.
+- The presigned URL pins the content type and length, so the object store
+  itself rejects an upload larger than the bucket allows.
+- Storage is opt-in: with no `S3_*` variables set, the routes answer 501.
+- The SigV4 presigner is implemented on `node:crypto` rather than the AWS SDK,
+  which would be larger than the rest of the backend, and is verified against
+  AWS's published worked example.
+
 ### Doctor
 
 - `dart run mongobase:setup --doctor [--api-url ...]` diagnoses schema drift
   between the app and the deployed backend, `.env` problems, an unsafe
-  `AUTH_MODE`, and reachability — each with the command that fixes it.
+  `AUTH_MODE`, missing storage credentials, and reachability — each with the
+  command that fixes it.
 
 ### Breaking
 
@@ -102,8 +120,14 @@ realtime is real, and your models are generated.
   replica set: 30 checks covering cross-user isolation, field allowlisting,
   merge semantics, transactional batches, tombstones, the pull watermark,
   query injection attempts, and realtime delivery.
+- `tool/e2e/storage_e2e.ts` runs the storage routes against a real MongoDB and
+  a stub object store: 16 checks covering cross-user isolation, path traversal,
+  content-type and size enforcement, shared-bucket delete rules, and the 501
+  path when storage is unconfigured.
+- `tool/e2e/signer_e2e.ts` pins the SigV4 output to AWS's worked example.
 - New Dart suites for the local store (real SQLite), the sync engine, online
-  mode, the realtime client, the wire format, model codegen and the doctor.
+  mode, the realtime client, the wire format, model codegen, storage, and the
+  doctor.
 
 ## 0.2.1
 

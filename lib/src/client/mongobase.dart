@@ -10,6 +10,7 @@ import '../errors.dart';
 import '../query/local_query_runner.dart';
 import '../query/query_runner.dart';
 import '../query/remote_query_runner.dart';
+import '../storage/storage.dart';
 import '../store/local_store.dart';
 import '../store/local_writer.dart';
 import '../store/sqlite_executor.dart';
@@ -182,6 +183,18 @@ class Mongobase {
 
   /// The mode this client was initialized in.
   MongobaseMode get mode => _config.mode;
+
+  /// File storage:
+  ///
+  /// ```dart
+  /// await Mongobase.storage.ref('avatars/me.png').putData(bytes);
+  /// ```
+  ///
+  /// Buckets are declared under `storage:` in `mongobase.yaml`.
+  static MongobaseStorage get storage => instance.getStorage();
+
+  /// Instance form of [storage].
+  MongobaseStorage getStorage() => MongobaseStorage(_api, _config.schema);
 
   /// The signed-in user's id (JWT `sub`), or `null` when signed out.
   String? get currentUserId => _currentUserId;

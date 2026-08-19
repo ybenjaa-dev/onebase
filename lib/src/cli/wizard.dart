@@ -22,10 +22,18 @@ collections:
   todos:
     owner_field: owner_id
     fields:
-      title: text
-      done: bool
+      title: text!        # trailing ! = required (non-nullable in Dart)
+      done: bool!
       created_at: datetime
       owner_id: text
+
+# File storage (optional). Delete this section if your app stores no files.
+# `private` means each user only ever sees their own files.
+# storage:
+#   avatars:
+#     access: private
+#     max_size: 5MB
+#     content_types: [image/*]
 ''';
 
 /// Everything `dart run mongobase:setup` generates, before touching disk.

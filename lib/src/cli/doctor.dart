@@ -120,7 +120,7 @@ Future<List<Diagnosis>> diagnose({
     }
   }
 
-  findings.addAll(_checkEnv(root));
+  findings.addAll(_checkEnv(root, storageDeclared: !schema.storage.isEmpty));
 
   // --- reachability --------------------------------------------------------
   if (apiUrl != null) {
@@ -130,7 +130,7 @@ Future<List<Diagnosis>> diagnose({
   return findings;
 }
 
-List<Diagnosis> _checkEnv(String root) {
+List<Diagnosis> _checkEnv(String root, {required bool storageDeclared}) {
   final env = File(p.join(root, 'backend', '.env'));
   if (!env.existsSync()) {
     return [
@@ -194,6 +194,35 @@ List<Diagnosis> _checkEnv(String root) {
       ));
     }
   }
+  if (storageDeclared) {
+    final missing = ['S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY']
+        .where((key) => (values[key] ?? '').isEmpty)
+        .toList();
+    if (missing.isEmpty) {
+      findings.add(const Diagnosis(DiagnosisLevel.ok, 'Storage is configured'));
+    } else {
+      findings.add(Diagnosis(
+        DiagnosisLevel.error,
+        'Storage buckets are declared but ${missing.join(', ')} '
+        '${missing.length == 1 ? 'is' : 'are'} not set',
+        detail: 'The /storage routes will answer 501 until they are.',
+        fix: 'Set them in backend/.env, or remove the `storage:` section.',
+      ));
+    }
+    // R2, MinIO, B2 and Spaces all need an explicit endpoint; only AWS does
+    // not, and AWS needs a real region rather than "auto".
+    final endpoint = values['S3_ENDPOINT'] ?? '';
+    final region = values['S3_REGION'] ?? '';
+    if (endpoint.isEmpty && (region.isEmpty || region == 'auto')) {
+      findings.add(const Diagnosis(
+        DiagnosisLevel.warning,
+        'S3_REGION is "auto" with no S3_ENDPOINT',
+        detail: 'Plain AWS needs a real region (eu-west-1, us-east-1, …). '
+            'Set S3_ENDPOINT instead if you are on R2, MinIO or Spaces.',
+      ));
+    }
+  }
+
   if (mode == 'jwks') {
     if ((values['JWKS_URL'] ?? '').isEmpty) {
       findings.add(const Diagnosis(

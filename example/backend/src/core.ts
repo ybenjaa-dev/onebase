@@ -1,6 +1,7 @@
 import { MongoClient, ObjectId } from 'mongodb';
 import type { ClientSession, Db } from 'mongodb';
 import { jwtVerify, createRemoteJWKSet, SignJWT } from 'jose';
+import { presign, type S3Config } from './s3.js';
 
 type FieldType = 'text' | 'int' | 'double' | 'bool' | 'datetime' | 'json';
 
@@ -37,6 +38,35 @@ const COLLECTIONS: Record<string, CollectionSpec> = {
     }
   }
 };
+
+interface BucketSpec {
+  access: 'private' | 'shared';
+  maxSize?: number;
+  contentTypes?: string[];
+}
+
+const STORAGE: Record<string, BucketSpec> = {
+  "avatars": {
+    "access": "private",
+    "maxSize": 2097152,
+    "contentTypes": [
+      "image/png",
+      "image/jpeg",
+      "image/webp"
+    ]
+  },
+  "brochures": {
+    "access": "shared"
+  }
+};
+
+/** Metadata for uploaded files. Keyed by the object key, so it is unique. */
+const FILES = '_mongobase_files';
+
+/** How long a presigned URL stays valid. Long enough for a slow upload on a
+ *  bad connection, short enough that a leaked URL expires quickly. */
+const UPLOAD_URL_TTL_SECONDS = 15 * 60;
+const DOWNLOAD_URL_TTL_SECONDS = 60 * 60;
 
 interface UploadOp {
   op: 'put' | 'patch' | 'delete';
@@ -148,6 +178,13 @@ export interface Env {
   JWKS_URL?: string;
   JWT_AUDIENCE?: string;
   JWT_ISSUER?: string;
+  /** Storage is optional; the routes report 501 until these are set. */
+  S3_ENDPOINT?: string;
+  S3_REGION?: string;
+  S3_BUCKET?: string;
+  S3_ACCESS_KEY_ID?: string;
+  S3_SECRET_ACCESS_KEY?: string;
+  S3_FORCE_PATH_STYLE?: string;
 }
 
 /**
@@ -189,6 +226,12 @@ export function readEnv(get: (key: string) => string | undefined): Env {
     JWKS_URL: get('JWKS_URL'),
     JWT_AUDIENCE: get('JWT_AUDIENCE'),
     JWT_ISSUER: get('JWT_ISSUER'),
+    S3_ENDPOINT: get('S3_ENDPOINT'),
+    S3_REGION: get('S3_REGION'),
+    S3_BUCKET: get('S3_BUCKET'),
+    S3_ACCESS_KEY_ID: get('S3_ACCESS_KEY_ID'),
+    S3_SECRET_ACCESS_KEY: get('S3_SECRET_ACCESS_KEY'),
+    S3_FORCE_PATH_STYLE: get('S3_FORCE_PATH_STYLE'),
   };
 
   if (authMode === 'jwks') {
@@ -1115,6 +1158,330 @@ export async function handleStream(
       'x-accel-buffering': 'no',
     },
   });
+}
+
+/**
+ * Storage: presigned URLs, so file bytes never pass through this server.
+ *
+ * The device uploads straight to your object store with a short-lived URL
+ * that only this backend can mint. That keeps the server tiny and means a
+ * large upload costs it nothing.
+ */
+function s3Config(env: Env): S3Config | null {
+  if (!env.S3_BUCKET || !env.S3_ACCESS_KEY_ID || !env.S3_SECRET_ACCESS_KEY) {
+    return null;
+  }
+  return {
+    endpoint: env.S3_ENDPOINT,
+    region: env.S3_REGION ?? 'auto',
+    bucket: env.S3_BUCKET,
+    accessKeyId: env.S3_ACCESS_KEY_ID,
+    secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+    // Everything except plain AWS wants path style; default accordingly.
+    forcePathStyle: env.S3_FORCE_PATH_STYLE
+      ? env.S3_FORCE_PATH_STYLE !== 'false'
+      : Boolean(env.S3_ENDPOINT),
+  };
+}
+
+/**
+ * Rejects anything that could escape the caller's prefix. Never "cleans up" a
+ * bad path — a path that needed fixing is a path we should not be signing.
+ */
+function validatePath(path: unknown): string | null {
+  if (typeof path !== 'string' || path.length === 0 || path.length > 1024) {
+    return null;
+  }
+  if (path.startsWith('/') || path.includes('\\')) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(path)) return null;
+  for (const segment of path.split('/')) {
+    if (segment === '' || segment === '.' || segment === '..') return null;
+  }
+  return path;
+}
+
+/**
+ * The object key for a file.
+ *
+ * Private buckets are namespaced by user id, so one user cannot name — let
+ * alone read — another user's file, whatever path they ask for.
+ */
+function objectKey(bucket: string, spec: BucketSpec, userId: string, path: string): string {
+  return spec.access === 'private'
+    ? `${bucket}/${userId}/${path}`
+    : `${bucket}/${path}`;
+}
+
+function contentTypeAllowed(spec: BucketSpec, contentType: string): boolean {
+  const allowed = spec.contentTypes;
+  if (!allowed || allowed.length === 0) return true;
+  const value = contentType.toLowerCase();
+  return allowed.some((pattern) => {
+    const rule = pattern.toLowerCase();
+    return rule.endsWith('/*')
+      ? value.startsWith(rule.slice(0, -1))
+      : value === rule;
+  });
+}
+
+interface StorageRequest {
+  bucket: string;
+  spec: BucketSpec;
+  path: string;
+  key: string;
+  config: S3Config;
+  /** The parsed body, so a handler never has to read the request twice. */
+  body: Record<string, unknown>;
+}
+
+/** Shared parsing for every storage route. */
+async function storageRequest(
+  request: Request,
+  env: Env,
+  userId: string,
+): Promise<StorageRequest | Response> {
+  const config = s3Config(env);
+  if (!config) {
+    return json(501, {
+      error:
+        'storage is not configured — set S3_BUCKET, S3_ACCESS_KEY_ID and ' +
+        'S3_SECRET_ACCESS_KEY (plus S3_ENDPOINT for R2/MinIO)',
+    });
+  }
+
+  const body = await readJson(request);
+  const bucket = body?.bucket;
+  if (typeof bucket !== 'string' || !STORAGE[bucket]) {
+    return json(400, {
+      error: `unknown storage bucket: ${String(bucket)}`,
+    });
+  }
+  const path = validatePath(body?.path);
+  if (path === null) {
+    return json(400, { error: 'invalid file path' });
+  }
+
+  const spec = STORAGE[bucket];
+  return {
+    bucket,
+    spec,
+    path,
+    key: objectKey(bucket, spec, userId, path),
+    config,
+    body: body ?? {},
+  };
+}
+
+export async function handleStorageUploadUrl(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const auth = await authenticate(request, env);
+  if ('response' in auth) return auth.response;
+
+  const parsed = await storageRequest(request, env, auth.userId);
+  if (parsed instanceof Response) return parsed;
+
+  const { body } = parsed;
+  const contentType =
+    typeof body.contentType === 'string' ? body.contentType : 'application/octet-stream';
+  const size = body.size;
+
+  if (!contentTypeAllowed(parsed.spec, contentType)) {
+    return json(400, {
+      error: `bucket "${parsed.bucket}" does not accept ${contentType}`,
+      allowed: parsed.spec.contentTypes,
+    });
+  }
+  if (typeof size !== 'number' || !Number.isFinite(size) || size < 0) {
+    return json(400, { error: 'size must be the byte length of the upload' });
+  }
+  if (parsed.spec.maxSize !== undefined && size > parsed.spec.maxSize) {
+    return json(400, {
+      error: `file is ${size} bytes; bucket "${parsed.bucket}" allows ${parsed.spec.maxSize}`,
+    });
+  }
+
+  // Signing the length and type means S3 itself rejects an upload that does
+  // not match what we approved — the limit is enforced, not merely advertised.
+  const headers = {
+    'content-type': contentType,
+    'content-length': String(size),
+  };
+
+  return json(200, {
+    url: presign({
+      config: parsed.config,
+      method: 'PUT',
+      key: parsed.key,
+      expiresIn: UPLOAD_URL_TTL_SECONDS,
+      headers,
+    }),
+    method: 'PUT',
+    headers,
+    key: parsed.key,
+    expires_in: UPLOAD_URL_TTL_SECONDS,
+  });
+}
+
+/** Recorded after the bytes land, so a listing only ever shows real files. */
+export async function handleStorageComplete(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const auth = await authenticate(request, env);
+  if ('response' in auth) return auth.response;
+
+  const parsed = await storageRequest(request, env, auth.userId);
+  if (parsed instanceof Response) return parsed;
+
+  const { body } = parsed;
+  const now = new Date();
+
+  try {
+    const client = await getMongo(env);
+    await client
+      .db(env.MONGO_DB)
+      .collection(FILES)
+      .replaceOne(
+        { _id: parsed.key } as never,
+        {
+          bucket: parsed.bucket,
+          path: parsed.path,
+          owner: auth.userId,
+          content_type:
+            typeof body.contentType === 'string' ? body.contentType : null,
+          size: typeof body.size === 'number' ? body.size : null,
+          updated_at: now,
+        },
+        { upsert: true },
+      );
+    return json(200, { key: parsed.key, path: parsed.path });
+  } catch (error) {
+    console.error('mongobase storage: complete failed', error);
+    return json(503, { error: 'transient failure, retry' });
+  }
+}
+
+export async function handleStorageDownloadUrl(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const auth = await authenticate(request, env);
+  if ('response' in auth) return auth.response;
+
+  const parsed = await storageRequest(request, env, auth.userId);
+  if (parsed instanceof Response) return parsed;
+
+  return json(200, {
+    url: presign({
+      config: parsed.config,
+      method: 'GET',
+      key: parsed.key,
+      expiresIn: DOWNLOAD_URL_TTL_SECONDS,
+    }),
+    key: parsed.key,
+    expires_in: DOWNLOAD_URL_TTL_SECONDS,
+  });
+}
+
+export async function handleStorageDelete(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const auth = await authenticate(request, env);
+  if ('response' in auth) return auth.response;
+
+  const parsed = await storageRequest(request, env, auth.userId);
+  if (parsed instanceof Response) return parsed;
+
+  try {
+    const client = await getMongo(env);
+    const files = client.db(env.MONGO_DB).collection(FILES);
+
+    // In a shared bucket anyone can read, but only the uploader may remove.
+    if (parsed.spec.access === 'shared') {
+      const existing = await files.findOne({ _id: parsed.key } as never);
+      if (existing && existing.owner !== auth.userId) {
+        return json(403, { error: 'this file belongs to another user' });
+      }
+    }
+
+    const response = await fetch(
+      presign({
+        config: parsed.config,
+        method: 'DELETE',
+        key: parsed.key,
+        expiresIn: 60,
+      }),
+      { method: 'DELETE' },
+    );
+    // S3 answers 204 for a delete, and also for a key that was never there.
+    if (!response.ok && response.status !== 404) {
+      console.error('mongobase storage: delete failed', response.status);
+      return json(503, { error: 'could not delete the file, retry' });
+    }
+
+    await files.deleteOne({ _id: parsed.key } as never);
+    return json(200, { key: parsed.key });
+  } catch (error) {
+    console.error('mongobase storage: delete failed', error);
+    return json(503, { error: 'transient failure, retry' });
+  }
+}
+
+/** Lists what the caller can see in a bucket, newest first. */
+export async function handleStorageList(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const auth = await authenticate(request, env);
+  if ('response' in auth) return auth.response;
+
+  const body = await readJson(request);
+  const bucket = body?.bucket;
+  if (typeof bucket !== 'string' || !STORAGE[bucket]) {
+    return json(400, { error: `unknown storage bucket: ${String(bucket)}` });
+  }
+  const spec = STORAGE[bucket];
+
+  const prefix = body?.prefix;
+  if (prefix !== undefined && typeof prefix !== 'string') {
+    return json(400, { error: 'prefix must be a string' });
+  }
+
+  const filter: Record<string, unknown> = { bucket };
+  if (spec.access === 'private') filter.owner = auth.userId;
+  if (prefix) {
+    // Escaped: a prefix is a literal, never a pattern the caller supplies.
+    filter.path = { $regex: `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}` };
+  }
+
+  try {
+    const client = await getMongo(env);
+    const files = await client
+      .db(env.MONGO_DB)
+      .collection(FILES)
+      .find(filter)
+      .sort({ updated_at: -1 })
+      .limit(500)
+      .toArray();
+
+    return json(200, {
+      files: files.map((file) => ({
+        path: String(file.path),
+        size: file.size ?? null,
+        content_type: file.content_type ?? null,
+        updated_at:
+          file.updated_at instanceof Date ? file.updated_at.toISOString() : null,
+        owner: file.owner ?? null,
+      })),
+    });
+  } catch (error) {
+    console.error('mongobase storage: list failed', error);
+    return json(503, { error: 'transient failure, retry' });
+  }
 }
 
 export function handleHealth(): Response {
