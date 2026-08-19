@@ -1,22 +1,16 @@
 # Changelog
 
-## 0.1.2
-
-Documentation only. No code changes from 0.1.1.
-
-## 0.1.1
+## 0.1.3
 
 Maintenance release.
 
-- `--doctor --api-url` reports backend health correctly.
-- Collection accessors are camelCased, so a collection named `family_members`
-  is reached as `OnebaseDb.familyMembers`. The name on the wire is unchanged.
 - The native SQLite library now comes from `sqlite3` itself rather than the
   separate `sqlite3_flutter_libs` package, which its author has discontinued.
   This sets the floor at Dart 3.10 / Flutter 3.38; `pub` keeps older projects
-  on 0.1.0.
-- Every dependency moved to its latest release, including the generated
+  on earlier releases.
+- Every dependency moved to its latest version, including the generated
   backend's: jose 6, the MongoDB driver 7, `@types/node` 26, `flutter_lints` 6.
+- Internal improvements to the CLI and code generation.
 
 ## 0.1.0
 
