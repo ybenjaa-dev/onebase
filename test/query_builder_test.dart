@@ -109,8 +109,8 @@ void main() {
           .compile();
       expect(
         compiled.sql,
-        'SELECT * FROM "todos" ORDER BY "due_at" DESC, "title" ASC '
-        'LIMIT ? OFFSET ?',
+        'SELECT * FROM "todos" ORDER BY "due_at" DESC, "title" ASC, '
+        '"id" ASC LIMIT ? OFFSET ?',
       );
       expect(compiled.parameters, [10, 20]);
     });

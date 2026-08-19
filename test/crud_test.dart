@@ -169,7 +169,7 @@ void main() {
       expect(results.single.done, false);
       expect(
         executor.lastCall.sql,
-        contains('WHERE "done" = ? ORDER BY "title" ASC LIMIT ?'),
+        contains('WHERE "done" = ? ORDER BY "title" ASC, "id" ASC LIMIT ?'),
       );
     });
   });
