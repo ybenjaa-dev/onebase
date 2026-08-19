@@ -173,13 +173,13 @@ const _packageJson = '''
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "jose": "^5.9.0",
-    "mongodb": "^6.10.0"
+    "jose": "^6.2.9",
+    "mongodb": "^7.5.0"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.5.0"
+    "@types/node": "^26.2.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.0"
   }
 }
 ''';

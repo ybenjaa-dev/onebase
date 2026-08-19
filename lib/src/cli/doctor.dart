@@ -334,7 +334,10 @@ Future<String?> _httpGet(String url) async {
     final request = await client.getUrl(Uri.parse(url));
     final response = await request.close();
     if (response.statusCode != 200) return null;
-    return response.transform(utf8.decoder).join();
+    // Awaited, not returned: `finally` runs as soon as this function returns,
+    // and closing the client first would tear down the connection before the
+    // body had been read.
+    return await response.transform(utf8.decoder).join();
   } finally {
     client.close(force: true);
   }

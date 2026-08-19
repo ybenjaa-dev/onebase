@@ -81,7 +81,10 @@ String generateDartSchema(OnebaseSchema schema) {
   for (final collection in schema.collections.values) {
     final model = collection.model;
     buffer
-      ..writeln('  static TypedCollection<$model> get ${collection.name} =>')
+      ..writeln(
+        '  static TypedCollection<$model> '
+        'get ${_dartField(collection.name)} =>',
+      )
       ..writeln("      Onebase.collection('${collection.name}')")
       ..writeln('          .withConverter<$model>(')
       ..writeln('            fromJson: $model.fromJson,')
@@ -105,7 +108,10 @@ String generateDartSchema(OnebaseSchema schema) {
   return buffer.toString();
 }
 
-String _firstAccessor(OnebaseSchema schema) => schema.collections.keys.first;
+/// A collection is named in snake_case, but the Dart accessor has to be a
+/// valid lowerCamelCase identifier.
+String _firstAccessor(OnebaseSchema schema) =>
+    _dartField(schema.collections.keys.first);
 
 String _model(MongoCollectionSchema collection) {
   final model = collection.model;

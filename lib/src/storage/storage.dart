@@ -90,7 +90,7 @@ class StorageBucketRef {
   Future<List<StorageFile>> list({String? prefix}) async {
     final response = await _api.storage('list', {
       'bucket': name,
-      if (prefix != null) 'prefix': prefix,
+      'prefix': ?prefix,
     });
     return [
       for (final entry in (response['files'] as List? ?? const []))

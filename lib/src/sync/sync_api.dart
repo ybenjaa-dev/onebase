@@ -126,7 +126,7 @@ class SyncApi {
   Future<PullResult> pull(String collection, String? since) async {
     final json = await _post('/pull', {
       'collection': collection,
-      if (since != null) 'since': since,
+      'since': ?since,
     });
     return PullResult(
       documents: [

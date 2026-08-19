@@ -68,7 +68,7 @@ flowchart LR
 
 ```yaml
 dependencies:
-  onebase: ^0.2.0    # requires Flutter 3.38+ / Dart 3.10+
+  onebase: ^0.1.1    # requires Flutter 3.38+ / Dart 3.10+
 ```
 
 **2. Describe your data** — `dart run onebase:setup --init` creates
@@ -154,6 +154,56 @@ DigitalOcean Spaces. Set `S3_BUCKET`, `S3_ACCESS_KEY_ID`,
 `S3_SECRET_ACCESS_KEY` (plus `S3_ENDPOINT` for anything that isn't AWS). Leave
 them unset and storage stays off.
 
+## Group data
+
+Some data belongs to a group rather than to one person — a family, a team, a
+household. Declare where membership lives, then scope collections to it:
+
+```yaml
+memberships:
+  family:
+    collection: family_members   # rows saying who is in which family
+    user_field: user_id
+    group_field: family_id
+    role_field: role             # optional — needed for `write: admin`
+    admin_role: admin            # optional — defaults to "admin"
+
+collections:
+  family_members:
+    scope: {membership: family, field: family_id, write: none}
+    fields: {family_id: text!, user_id: text!, role: text!}
+
+  family_cheers:
+    owner_field: from_user_id
+    scope: {membership: family, field: family_id, write: member}
+    fields: {family_id: text!, from_user_id: text!, message: text}
+
+  profiles:                      # I write mine, my family reads it
+    owner_field: user_id
+    scope: {membership: family, field: family_id, write: owner}
+    fields: {user_id: text!, family_id: text, name: text}
+```
+
+`field: id` scopes a collection by its own document id — the shape the group
+collection itself has, where a family's id *is* the group id.
+
+| `write:` | Who may write |
+|---|---|
+| `owner` | only the `owner_field` user — the group reads, one person writes |
+| `member` | any member of the group (the default) |
+| `admin` | only members whose membership row carries `admin_role` |
+| `none` | nobody from a client — server endpoints only |
+
+`write: none` is how joining and leaving stay safe: a client that could write
+its own membership row could add itself to any group, so those go through an
+endpoint of yours that validates an invite instead.
+
+Reads combine, they don't replace: a collection with both an `owner_field`
+and a `scope` syncs *my documents plus my group's*. Every rule is enforced by
+the backend — a patched client resolves the same group ids from the same
+membership rows, and a member removed from a group stops receiving its data
+on the next request, including on an open realtime stream.
+
 ## Auth
 
 Bring your own JWTs — anything that issues them works:
@@ -233,10 +283,12 @@ the command that fixes it.
   short-lived serverless functions cut it and onebase falls back to polling.
 - **Uploads are not offline-queued.** Document writes survive with no network;
   file uploads need a connection and say so.
-- Queries run on synced data — a device sees its user's documents plus
-  `shared: true` collections, not the whole database.
-- `shared: true` collections are readable and writable by any signed-in user;
-  role-based rules are on the roadmap.
+- Queries run on synced data — a device sees its user's documents, its groups'
+  documents and `shared: true` collections, not the whole database.
+- `shared: true` collections are readable and writable by any signed-in user.
+  Use a `scope:` instead when the data belongs to a group.
+- A user's groups are re-read per request. A very large group count per user
+  makes that lookup the cost of a sync; it is capped at 200.
 - No aggregation pipeline on-device.
 
 ## Development
