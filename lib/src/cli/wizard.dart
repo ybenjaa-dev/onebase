@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import '../errors.dart';
 import '../schema/schema.dart';
 import '../schema/schema_parser.dart';
+import 'dart_formatting.dart';
 import 'doctor.dart';
 import 'generate_dart_schema.dart';
 import 'templates/platforms.dart';
@@ -153,7 +154,11 @@ Future<int> runSetup(List<String> arguments, {StringSink? output}) async {
     }
     target
       ..createSync(recursive: true)
-      ..writeAsStringSync(content);
+      ..writeAsStringSync(
+        path.endsWith('.dart')
+            ? formatDartSource(content, root: root)
+            : content,
+      );
     out.writeln('✓ $path');
   }
 

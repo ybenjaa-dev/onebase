@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import '../errors.dart';
 import '../schema/schema.dart';
 import '../schema/schema_parser.dart';
+import 'dart_formatting.dart';
 import 'generate_dart_schema.dart';
 import 'templates/backend_core.dart';
 
@@ -87,8 +88,11 @@ Future<List<Diagnosis>> diagnose({
         fix: 'dart run onebase:setup',
       ),
     );
-  } else if (generated.readAsStringSync().trim() !=
-      generateDartSchema(schema).trim()) {
+  } else if (formatDartSource(
+        generated.readAsStringSync(),
+        root: root,
+      ).trim() !=
+      formatDartSource(generateDartSchema(schema), root: root).trim()) {
     findings.add(
       const Diagnosis(
         DiagnosisLevel.error,

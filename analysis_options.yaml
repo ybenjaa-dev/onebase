@@ -1,6 +1,10 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  # Written by `flutter pub get`'s analysis_options migration; kept in git so
+  # the migration is a no-op and never dirties the tree mid-CI.
+  exclude:
+    - build/**
   language:
     strict-casts: true
     strict-inference: true

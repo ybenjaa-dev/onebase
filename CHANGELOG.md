@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3
+
+- Generated Dart now goes through `dart format` as it is written, so
+  re-running setup no longer produces a file your own formatter rejects, and
+  `--doctor` compares the generated schema without tripping over layout.
+
 ## 0.3.2
 
 - Every query carries a total order, so results are stable between identical
