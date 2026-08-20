@@ -45,6 +45,25 @@ final onebaseSchema = OnebaseSchema([
     requiredFields: {'family_id', 'owner_id'},
     model: 'Diary',
   ),
+  MongoCollectionSchema(
+    'messages',
+    fields: {
+      'body': MongoFieldType.text,
+      'family_id': MongoFieldType.text,
+      'sent_at': MongoFieldType.datetime,
+    },
+    requiredFields: {'body', 'family_id'},
+    model: 'Message',
+  ),
+  MongoCollectionSchema(
+    'audit_log',
+    fields: {
+      'family_id': MongoFieldType.text,
+      'message': MongoFieldType.text,
+    },
+    requiredFields: {'family_id', 'message'},
+    model: 'AuditLog',
+  ),
 ]);
 
 /// Typed collections, ready to use:
@@ -54,28 +73,47 @@ final onebaseSchema = OnebaseSchema([
 /// ```
 abstract final class OnebaseDb {
   static TypedCollection<FamilyMember> get familyMembers =>
-      Onebase.collection('family_members').withConverter<FamilyMember>(
-        fromJson: FamilyMember.fromJson,
-        toJson: (value) => value.toJson(),
-      );
+      Onebase.collection('family_members')
+          .withConverter<FamilyMember>(
+            fromJson: FamilyMember.fromJson,
+            toJson: (value) => value.toJson(),
+          );
 
   static TypedCollection<Chore> get chores =>
-      Onebase.collection('chores').withConverter<Chore>(
-        fromJson: Chore.fromJson,
-        toJson: (value) => value.toJson(),
-      );
+      Onebase.collection('chores')
+          .withConverter<Chore>(
+            fromJson: Chore.fromJson,
+            toJson: (value) => value.toJson(),
+          );
 
   static TypedCollection<FamilySetting> get familySettings =>
-      Onebase.collection('family_settings').withConverter<FamilySetting>(
-        fromJson: FamilySetting.fromJson,
-        toJson: (value) => value.toJson(),
-      );
+      Onebase.collection('family_settings')
+          .withConverter<FamilySetting>(
+            fromJson: FamilySetting.fromJson,
+            toJson: (value) => value.toJson(),
+          );
 
   static TypedCollection<Diary> get diaries =>
-      Onebase.collection('diaries').withConverter<Diary>(
-        fromJson: Diary.fromJson,
-        toJson: (value) => value.toJson(),
-      );
+      Onebase.collection('diaries')
+          .withConverter<Diary>(
+            fromJson: Diary.fromJson,
+            toJson: (value) => value.toJson(),
+          );
+
+  static TypedCollection<Message> get messages =>
+      Onebase.collection('messages')
+          .withConverter<Message>(
+            fromJson: Message.fromJson,
+            toJson: (value) => value.toJson(),
+          );
+
+  static TypedCollection<AuditLog> get auditLog =>
+      Onebase.collection('audit_log')
+          .withConverter<AuditLog>(
+            fromJson: AuditLog.fromJson,
+            toJson: (value) => value.toJson(),
+          );
+
 }
 
 /// A document in `family_members`.
@@ -104,11 +142,11 @@ class FamilyMember {
   }
 
   Map<String, Object?> toJson() => {
-    if (id.isNotEmpty) 'id': id,
-    'family_id': familyId,
-    'user_id': userId,
-    if (role != null) 'role': role,
-  };
+        if (id.isNotEmpty) 'id': id,
+        'family_id': familyId,
+        'user_id': userId,
+        if (role != null) 'role': role,
+      };
 
   /// Returns a copy with the given fields replaced. Passing
   /// null leaves a field unchanged.
@@ -133,7 +171,8 @@ class FamilyMember {
           id == other.id &&
           familyId == other.familyId &&
           userId == other.userId &&
-          role == other.role;
+          role == other.role
+;
 
   @override
   int get hashCode => Object.hashAll([id, familyId, userId, role]);
@@ -168,11 +207,11 @@ class Chore {
   }
 
   Map<String, Object?> toJson() => {
-    if (id.isNotEmpty) 'id': id,
-    'title': title,
-    'family_id': familyId,
-    if (ownerId != null) 'owner_id': ownerId,
-  };
+        if (id.isNotEmpty) 'id': id,
+        'title': title,
+        'family_id': familyId,
+        if (ownerId != null) 'owner_id': ownerId,
+      };
 
   /// Returns a copy with the given fields replaced. Passing
   /// null leaves a field unchanged.
@@ -197,7 +236,8 @@ class Chore {
           id == other.id &&
           title == other.title &&
           familyId == other.familyId &&
-          ownerId == other.ownerId;
+          ownerId == other.ownerId
+;
 
   @override
   int get hashCode => Object.hashAll([id, title, familyId, ownerId]);
@@ -208,7 +248,11 @@ class Chore {
 
 /// A document in `family_settings`.
 class FamilySetting {
-  const FamilySetting({this.id = '', required this.familyId, this.quietHours});
+  const FamilySetting({
+    this.id = '',
+    required this.familyId,
+    this.quietHours,
+  });
 
   /// Empty until the document has been inserted — onebase
   /// assigns the id and `insert` returns it.
@@ -225,14 +269,18 @@ class FamilySetting {
   }
 
   Map<String, Object?> toJson() => {
-    if (id.isNotEmpty) 'id': id,
-    'family_id': familyId,
-    if (quietHours != null) 'quiet_hours': quietHours,
-  };
+        if (id.isNotEmpty) 'id': id,
+        'family_id': familyId,
+        if (quietHours != null) 'quiet_hours': quietHours,
+      };
 
   /// Returns a copy with the given fields replaced. Passing
   /// null leaves a field unchanged.
-  FamilySetting copyWith({String? id, String? familyId, String? quietHours}) {
+  FamilySetting copyWith({
+    String? id,
+    String? familyId,
+    String? quietHours,
+  }) {
     return FamilySetting(
       id: id ?? this.id,
       familyId: familyId ?? this.familyId,
@@ -246,7 +294,8 @@ class FamilySetting {
       other is FamilySetting &&
           id == other.id &&
           familyId == other.familyId &&
-          quietHours == other.quietHours;
+          quietHours == other.quietHours
+;
 
   @override
   int get hashCode => Object.hashAll([id, familyId, quietHours]);
@@ -281,11 +330,11 @@ class Diary {
   }
 
   Map<String, Object?> toJson() => {
-    if (id.isNotEmpty) 'id': id,
-    'family_id': familyId,
-    'owner_id': ownerId,
-    if (entry != null) 'entry': entry,
-  };
+        if (id.isNotEmpty) 'id': id,
+        'family_id': familyId,
+        'owner_id': ownerId,
+        if (entry != null) 'entry': entry,
+      };
 
   /// Returns a copy with the given fields replaced. Passing
   /// null leaves a field unchanged.
@@ -310,13 +359,137 @@ class Diary {
           id == other.id &&
           familyId == other.familyId &&
           ownerId == other.ownerId &&
-          entry == other.entry;
+          entry == other.entry
+;
 
   @override
   int get hashCode => Object.hashAll([id, familyId, ownerId, entry]);
 
   @override
   String toString() => 'Diary(${toJson()})';
+}
+
+/// A document in `messages`.
+class Message {
+  const Message({
+    this.id = '',
+    required this.body,
+    required this.familyId,
+    this.sentAt,
+  });
+
+  /// Empty until the document has been inserted — onebase
+  /// assigns the id and `insert` returns it.
+  final String id;
+  final String body;
+  final String familyId;
+  final DateTime? sentAt;
+
+  factory Message.fromJson(Map<String, Object?> json) {
+    return Message(
+      id: json['id'] as String? ?? '',
+      body: json['body'] as String? ?? _missing('body'),
+      familyId: json['family_id'] as String? ?? _missing('family_id'),
+      sentAt: json['sent_at'] as DateTime?,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+        if (id.isNotEmpty) 'id': id,
+        'body': body,
+        'family_id': familyId,
+        if (sentAt != null) 'sent_at': sentAt,
+      };
+
+  /// Returns a copy with the given fields replaced. Passing
+  /// null leaves a field unchanged.
+  Message copyWith({
+    String? id,
+    String? body,
+    String? familyId,
+    DateTime? sentAt,
+  }) {
+    return Message(
+      id: id ?? this.id,
+      body: body ?? this.body,
+      familyId: familyId ?? this.familyId,
+      sentAt: sentAt ?? this.sentAt,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Message &&
+          id == other.id &&
+          body == other.body &&
+          familyId == other.familyId &&
+          sentAt == other.sentAt
+;
+
+  @override
+  int get hashCode => Object.hashAll([id, body, familyId, sentAt]);
+
+  @override
+  String toString() => 'Message(${toJson()})';
+}
+
+/// A document in `audit_log`.
+class AuditLog {
+  const AuditLog({
+    this.id = '',
+    required this.familyId,
+    required this.message,
+  });
+
+  /// Empty until the document has been inserted — onebase
+  /// assigns the id and `insert` returns it.
+  final String id;
+  final String familyId;
+  final String message;
+
+  factory AuditLog.fromJson(Map<String, Object?> json) {
+    return AuditLog(
+      id: json['id'] as String? ?? '',
+      familyId: json['family_id'] as String? ?? _missing('family_id'),
+      message: json['message'] as String? ?? _missing('message'),
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+        if (id.isNotEmpty) 'id': id,
+        'family_id': familyId,
+        'message': message,
+      };
+
+  /// Returns a copy with the given fields replaced. Passing
+  /// null leaves a field unchanged.
+  AuditLog copyWith({
+    String? id,
+    String? familyId,
+    String? message,
+  }) {
+    return AuditLog(
+      id: id ?? this.id,
+      familyId: familyId ?? this.familyId,
+      message: message ?? this.message,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AuditLog &&
+          id == other.id &&
+          familyId == other.familyId &&
+          message == other.message
+;
+
+  @override
+  int get hashCode => Object.hashAll([id, familyId, message]);
+
+  @override
+  String toString() => 'AuditLog(${toJson()})';
 }
 
 /// Thrown when a document is missing a field the schema marks required.

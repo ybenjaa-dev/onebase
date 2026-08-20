@@ -16,8 +16,17 @@ interface ScopeSpec {
   write: GroupWrite;
 }
 
+interface SyncSpec {
+  mode: 'full' | 'window' | 'none';
+  /** Datetime field the window is measured against. */
+  field?: string;
+  windowMs?: number;
+}
+
 interface CollectionSpec {
   ownerField?: string;
+  /** Absent means the whole collection syncs. */
+  sync?: SyncSpec;
   /** Present when the collection belongs to a group rather than one user. */
   scope?: ScopeSpec;
   /** Fields declared with a trailing `!` in onebase.yaml. */
@@ -1053,6 +1062,11 @@ export async function handlePull(
     await ensureIndexes(client, env);
     const db = client.db(env.MONGO_DB);
 
+    // `sync: none` is never downloaded; the client reads it over /query.
+    if (spec.sync?.mode === 'none') {
+      return json(200, { documents: [], cursor: rawSince ?? null, has_more: false });
+    }
+
     const readUpTo = new Date(Date.now() - PULL_SAFETY_MS);
     const window = (field: string): Record<string, unknown> => ({
       [field]: since ? { $gt: since, $lte: readUpTo } : { $lte: readUpTo },
@@ -1065,9 +1079,18 @@ export async function handlePull(
       return json(200, { documents: [], cursor: rawSince ?? null, has_more: false });
     }
 
+    // A windowed collection only ever sends its recent slice, so a device
+    // holds a bounded amount however far the collection grows.
+    const syncWindow: Record<string, unknown> = {};
+    if (spec.sync?.mode === 'window' && spec.sync.field && spec.sync.windowMs) {
+      syncWindow[spec.sync.field] = {
+        $gte: new Date(Date.now() - spec.sync.windowMs),
+      };
+    }
+
     const documents = await db
       .collection(name)
-      .find({ ...scope, ...window(UPDATED_AT) })
+      .find({ ...scope, ...syncWindow, ...window(UPDATED_AT) })
       .sort({ [UPDATED_AT]: 1, _id: 1 })
       .limit(PULL_LIMIT)
       .toArray();

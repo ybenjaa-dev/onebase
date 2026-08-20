@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS $metaTable (
 )''');
 
       for (final collection in schema.collections.values) {
+        if (collection.sync.isRemoteOnly) continue;
         await tx.execute(
           'CREATE TABLE IF NOT EXISTS "${collection.name}" ('
           'id TEXT PRIMARY KEY NOT NULL, '
@@ -325,8 +326,9 @@ CREATE TABLE IF NOT EXISTS $metaTable (
   /// so the next user cannot see cached documents.
   Future<void> clear() async {
     await db.writeTransaction((tx) async {
-      for (final collection in schema.collections.keys) {
-        await tx.execute('DELETE FROM "$collection"');
+      for (final collection in schema.collections.values) {
+        if (collection.sync.isRemoteOnly) continue;
+        await tx.execute('DELETE FROM "${collection.name}"');
       }
       await tx.execute('DELETE FROM $outboxTable');
       await tx.execute('DELETE FROM $metaTable');

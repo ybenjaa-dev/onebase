@@ -41,6 +41,54 @@ enum MongoFieldType {
   }
 }
 
+/// How much of a collection is kept on the device.
+enum SyncMode {
+  /// Every document the user can see. Instant reads and full offline use, at
+  /// the cost of holding all of it locally.
+  full('full'),
+
+  /// Only documents inside a rolling time window. For collections that grow
+  /// without bound — messages, orders, activity — where the recent slice is
+  /// what anyone actually opens.
+  window('window'),
+
+  /// Nothing is synced. Reads go to the backend and page like online mode, so
+  /// a collection with a million rows costs the device nothing.
+  none('none');
+
+  const SyncMode(this.yamlName);
+
+  final String yamlName;
+
+  static SyncMode parse(String value) {
+    for (final mode in values) {
+      if (mode.yamlName == value) return mode;
+    }
+    throw SchemaParseException(
+      'Unknown sync mode "$value".',
+      hint: 'Valid modes: ${values.map((m) => m.yamlName).join(', ')}.',
+    );
+  }
+}
+
+/// What a collection keeps on the device.
+class SyncPolicy {
+  const SyncPolicy({this.mode = SyncMode.full, this.field, this.window});
+
+  static const everything = SyncPolicy();
+
+  final SyncMode mode;
+
+  /// Datetime field the [window] is measured against.
+  final String? field;
+
+  /// How far back to sync. Only meaningful for [SyncMode.window].
+  final Duration? window;
+
+  /// True when reads must go to the backend instead of the local replica.
+  bool get isRemoteOnly => mode == SyncMode.none;
+}
+
 /// Who, inside a group, may write a group-scoped collection.
 enum GroupWrite {
   /// Only the document's `owner_field` user. Requires an `owner_field`; the
@@ -183,6 +231,7 @@ class MongoCollectionSchema {
     this.shared = false,
     this.scope,
     this.requiredFields = const {},
+    this.sync = SyncPolicy.everything,
     String? model,
   }) : model = model ?? modelNameFor(name) {
     if (name.isEmpty) {
@@ -206,6 +255,30 @@ class MongoCollectionSchema {
             '(for example `_updated_at`). Rename the field.',
       );
     }
+    if (sync.mode == SyncMode.window) {
+      final field = sync.field;
+      if (field == null || !fields.containsKey(field)) {
+        throw SchemaParseException(
+          'Collection "$name" syncs a window but does not declare '
+          '"${field ?? '<missing>'}".',
+          hint: 'Point `sync.field` at a datetime field on this collection.',
+        );
+      }
+      if (fields[field] != MongoFieldType.datetime) {
+        throw SchemaParseException(
+          'Collection "$name" syncs a window on "$field", which is '
+          '${fields[field]!.yamlName}.',
+          hint: 'A sync window needs a datetime field to measure against.',
+        );
+      }
+      if (sync.window == null) {
+        throw SchemaParseException(
+          'Collection "$name" syncs a window but sets no duration.',
+          hint: 'Add `sync: {window: 90d, field: $field}`.',
+        );
+      }
+    }
+
     final undeclaredRequired = requiredFields.where(
       (field) => !fields.containsKey(field),
     );
@@ -281,6 +354,9 @@ class MongoCollectionSchema {
   /// than owned by one user. Combines with [ownerField]: the owner writes,
   /// the group reads.
   final GroupScope? scope;
+
+  /// How much of this collection is kept on the device.
+  final SyncPolicy sync;
 
   /// Fields declared with a trailing `!` in `onebase.yaml`.
   ///

@@ -71,7 +71,7 @@ flowchart LR
 
 ```yaml
 dependencies:
-  onebase: ^0.2.0    # requires Flutter 3.38+ / Dart 3.10+
+  onebase: ^0.3.0    # requires Flutter 3.38+ / Dart 3.10+
 ```
 
 **2. Describe your data** — `dart run onebase:setup --init` creates
@@ -158,6 +158,43 @@ ListView.builder(
 in one frame still loads one page. Listen to `pager.changes` to rebuild, and
 `refresh()` for pull-to-refresh. Failures land on `pager.error` and leave what
 is already loaded on screen.
+
+## Controlling what syncs
+
+Offline-first means holding data on the device, so a collection that grows
+without bound would otherwise grow the device's copy with it. Each collection
+decides how much it keeps:
+
+```yaml
+collections:
+  todos:                   # default: everything the user can see
+    owner_field: owner_id
+    fields: {...}
+
+  messages:                # only the recent slice lives on the device
+    owner_field: owner_id
+    sync:
+      window: 90d
+      field: sent_at
+    fields: {...}
+
+  audit_log:               # never downloaded; reads go to the backend
+    owner_field: owner_id
+    sync: none
+    fields: {...}
+```
+
+| `sync` | On the device | Reads | Works offline |
+|---|---|---|---|
+| default | everything | local, instant | yes |
+| `window: 90d` | the recent slice | local, instant | for that slice |
+| `none` | nothing | paged from the backend | no |
+
+`sync: none` is not the same as unreadable — the collection still queries and
+pages normally, it just never downloads. That is what lets one app keep small
+collections local and instant while paging through a million-row table
+untouched. Nothing outside a window is hidden either: a direct query still
+finds it.
 
 ## Teams and groups
 

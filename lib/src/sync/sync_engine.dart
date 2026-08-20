@@ -130,13 +130,17 @@ class SyncEngine {
   }
 
   Future<void> _pull() async {
-    for (final collection in _schema.collections.keys) {
-      var cursor = await _store.cursor(collection);
+    for (final collection in _schema.collections.values) {
+      // A collection marked `sync: none` is never downloaded — its reads go
+      // to the backend, so pulling it would cost storage nobody reads.
+      if (collection.sync.isRemoteOnly) continue;
+      final name = collection.name;
+      var cursor = await _store.cursor(name);
       // Drain pages so a long offline period catches up in one sync.
       for (var page = 0; page < 50; page++) {
-        final result = await _api.pull(collection, cursor);
+        final result = await _api.pull(name, cursor);
         if (result.documents.isEmpty && result.cursor == null) break;
-        await _store.applyPull(collection, result.documents, result.cursor);
+        await _store.applyPull(name, result.documents, result.cursor);
         cursor = result.cursor ?? cursor;
         if (!result.hasMore) break;
       }

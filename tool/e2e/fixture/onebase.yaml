@@ -43,3 +43,26 @@ collections:
       family_id: text!
       owner_id: text!
       entry: text
+
+  messages:
+    scope:
+      membership: family
+      field: family_id
+      write: member
+    sync:
+      window: 30d
+      field: sent_at
+    fields:
+      body: text!
+      family_id: text!
+      sent_at: datetime
+
+  audit_log:
+    scope:
+      membership: family
+      field: family_id
+      write: none
+    sync: none
+    fields:
+      family_id: text!
+      message: text!

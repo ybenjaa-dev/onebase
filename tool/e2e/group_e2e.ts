@@ -235,6 +235,67 @@ await t('adding a membership grants access from then on', async () => {
   assert.deepEqual(await idsOf(dan, 'chores'), ['c1']);
 });
 
+// -------------------------------------------------------- sync policy
+
+await t('a windowed collection only syncs its recent slice', async () => {
+  const now = Date.now();
+  await db.collection('messages').insertMany([
+    { _id: 'recent' as never, family_id: 'smith', body: 'hi',
+      sent_at: new Date(now - 5 * 86400_000), _updated_at: new Date(now - 60_000) },
+    { _id: 'ancient' as never, family_id: 'smith', body: 'old',
+      sent_at: new Date(now - 365 * 86400_000), _updated_at: new Date(now - 60_000) },
+  ]);
+
+  const res = await handlePull(req(alice, { collection: 'messages' }), env);
+  const ids = ((await res.json()) as any).documents.map((d: any) => d.id);
+  assert.ok(ids.includes('recent'), `expected the recent one: ${ids}`);
+  assert.ok(
+    !ids.includes('ancient'),
+    'a document outside the window must not be downloaded',
+  );
+});
+
+await t('the window does not hide documents from a direct query', async () => {
+  // Not synced is not the same as not readable: the old message is still
+  // there when the app asks for it.
+  const res = await query(alice, {
+    collection: 'messages',
+    filters: [{ field: 'body', op: 'eq', value: 'old' }],
+  });
+  const ids = ((await res.json()) as any).documents.map((d: any) => d.id);
+  assert.deepEqual(ids, ['ancient']);
+});
+
+await t('a collection marked sync: none is never pulled', async () => {
+  await db.collection('audit_log').insertOne(
+    { _id: 'a1' as never, family_id: 'smith', message: 'logged',
+      _updated_at: new Date(Date.now() - 60_000) },
+  );
+
+  const res = await handlePull(req(alice, { collection: 'audit_log' }), env);
+  assert.equal(res.status, 200);
+  assert.deepEqual(
+    ((await res.json()) as any).documents,
+    [],
+    'it costs the device nothing',
+  );
+});
+
+await t('but it is still queryable, and still group-scoped', async () => {
+  assert.deepEqual(await idsOf(alice, 'audit_log'), ['a1']);
+  assert.deepEqual(await idsOf(carol, 'audit_log'), []);
+});
+
+await t('write: none refuses client writes to the audit log', async () => {
+  const res = await push(alice, [
+    { op: 'put', collection: 'audit_log', id: 'a2',
+      data: { family_id: 'smith', message: 'forged' } },
+  ]);
+  const skipped = await skippedOf(res);
+  assert.equal(skipped.length, 1);
+  assert.match(skipped[0].reason, /read-only/);
+});
+
 console.log(`\n${pass} group permission checks passed`);
 await mongo.close();
 await replset.stop();

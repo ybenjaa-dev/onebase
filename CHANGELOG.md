@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0
+## 0.3.0
 
 ### Teams and groups
 
@@ -8,6 +8,14 @@
   from a table you already keep and a write rule of `member`, `admin`, `owner`
   or `none`. Reads, writes, sync and realtime are all narrowed to the caller's
   groups, enforced by the backend from the verified token.
+
+### Controlling what syncs
+
+- Each collection chooses how much lives on the device: everything (the
+  default), a rolling `window` of recent documents, or `none`.
+- `sync: none` keeps a collection off the device entirely while still serving
+  reads from the backend, so an app can hold small collections locally and page
+  through a large one without downloading it.
 
 ### Pagination
 

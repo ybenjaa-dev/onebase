@@ -61,7 +61,14 @@ OnebaseSchema parseSchemaYaml(String yamlSource) {
       );
     }
 
-    const knownKeys = {'fields', 'owner_field', 'shared', 'scope', 'model'};
+    const knownKeys = {
+      'fields',
+      'owner_field',
+      'shared',
+      'scope',
+      'sync',
+      'model',
+    };
     final unknown = value.keys
         .map((k) => k.toString())
         .where((k) => !knownKeys.contains(k));
@@ -124,6 +131,7 @@ OnebaseSchema parseSchemaYaml(String yamlSource) {
         shared: shared as bool? ?? false,
         scope: _parseScope(value['scope'], name),
         requiredFields: required,
+        sync: _parseSync(value['sync'], name),
         model: value['model']?.toString(),
       ),
     );
@@ -360,4 +368,78 @@ int? _parseSize(Object? value, String bucket) {
     _ => 1,
   };
   return (amount * multiplier).round();
+}
+
+/// Parses one collection's optional `sync:` section.
+///
+/// ```yaml
+/// sync: none              # never synced; reads go to the backend
+///
+/// sync:                   # or keep a rolling window on the device
+///   window: 90d
+///   field: created_at
+/// ```
+SyncPolicy _parseSync(Object? node, String collection) {
+  if (node == null) return SyncPolicy.everything;
+
+  // `sync: none` / `sync: full` as a bare word.
+  if (node is String) {
+    final mode = SyncMode.parse(node);
+    if (mode == SyncMode.window) {
+      throw SchemaParseException(
+        '`sync: window` on "$collection" needs a duration and a field.',
+        hint: 'sync:\n  window: 90d\n  field: created_at',
+      );
+    }
+    return SyncPolicy(mode: mode);
+  }
+
+  if (node is! YamlMap) {
+    throw SchemaParseException(
+      '`sync` of collection "$collection" must be a mode or a map.',
+      hint: 'sync: none, or sync: {window: 90d, field: created_at}',
+    );
+  }
+
+  const knownKeys = {'mode', 'window', 'field'};
+  final unknown = node.keys
+      .map((k) => k.toString())
+      .where((k) => !knownKeys.contains(k));
+  if (unknown.isNotEmpty) {
+    throw SchemaParseException(
+      '`sync` of collection "$collection" has unknown option(s): '
+      '${unknown.join(', ')}.',
+      hint: 'Valid options: ${knownKeys.join(', ')}.',
+    );
+  }
+
+  final window = _parseDuration(node['window'], collection);
+  return SyncPolicy(
+    mode: SyncMode.parse(
+      node['mode']?.toString() ??
+          (window != null ? SyncMode.window.yamlName : SyncMode.full.yamlName),
+    ),
+    field: node['field']?.toString(),
+    window: window,
+  );
+}
+
+/// Accepts `90d`, `12h`, `30m` — the units a sync window is actually
+/// expressed in.
+Duration? _parseDuration(Object? value, String collection) {
+  if (value == null) return null;
+  final text = value.toString().trim().toLowerCase();
+  final match = RegExp(r'^(\d+)\s*([dhm])$').firstMatch(text);
+  if (match == null) {
+    throw SchemaParseException(
+      '`window` of collection "$collection" is not a duration: $value.',
+      hint: 'Use a number with d, h or m — for example 90d.',
+    );
+  }
+  final amount = int.parse(match.group(1)!);
+  return switch (match.group(2)) {
+    'd' => Duration(days: amount),
+    'h' => Duration(hours: amount),
+    _ => Duration(minutes: amount),
+  };
 }

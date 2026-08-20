@@ -40,7 +40,9 @@ class Onebase {
   Onebase._(
     this._config,
     this._runner,
-    this._writer, {
+    this._writer,
+    this._remoteRunner,
+    this._remoteWriter, {
     SqliteDatabase? database,
     LocalStore? store,
     SyncEngine? engine,
@@ -57,6 +59,10 @@ class Onebase {
   final OnebaseConfig _config;
   final QueryRunner _runner;
   final DocumentWriter _writer;
+
+  /// Used for collections marked `sync: none`, which are never held locally.
+  final QueryRunner _remoteRunner;
+  final DocumentWriter _remoteWriter;
   final SyncApi _api;
 
   /// Offline mode only.
@@ -113,15 +119,20 @@ class Onebase {
         : null;
 
     final Onebase instance;
+    final remoteRunner = RemoteQueryRunner(
+      api,
+      changes: realtime?.events.map((event) => event.collection),
+      pollInterval: config.pollInterval,
+    );
+    final remoteWriter = RemoteWriter(api);
+
     if (config.mode == OnebaseMode.online) {
       instance = Onebase._(
         config,
-        RemoteQueryRunner(
-          api,
-          changes: realtime?.events.map((event) => event.collection),
-          pollInterval: config.pollInterval,
-        ),
-        RemoteWriter(api),
+        remoteRunner,
+        remoteWriter,
+        remoteRunner,
+        remoteWriter,
         api: api,
         realtime: realtime,
       );
@@ -147,6 +158,8 @@ class Onebase {
         config,
         LocalQueryRunner(SqliteExecutor(database)),
         LocalWriter(store),
+        remoteRunner,
+        remoteWriter,
         database: database,
         store: store,
         engine: engine,
@@ -158,6 +171,10 @@ class Onebase {
       // within milliseconds. The periodic sync still runs and remains the
       // authority on the watermark, so nothing is missed if the stream drops.
       realtime?.events.listen((event) {
+        // A collection that is not held locally has nothing to apply to; its
+        // readers re-query the backend instead.
+        final collection = config.schema.collections[event.collection];
+        if (collection == null || collection.sync.isRemoteOnly) return;
         unawaited(store.applyPull(event.collection, [event.document], null));
       });
 
@@ -177,9 +194,14 @@ class Onebase {
   /// Instance form of [collection].
   MongoCollection getCollection(String name) {
     final schema = _config.schema.collection(name);
+    // `sync: none` keeps a collection off the device entirely, so its reads
+    // and writes go straight to the backend even in offline mode. That is what
+    // lets one app hold small collections locally and page through a large one
+    // without downloading it.
+    final remoteOnly = schema.sync.isRemoteOnly;
     return MongoCollection(
-      _runner,
-      _writer,
+      remoteOnly ? _remoteRunner : _runner,
+      remoteOnly ? _remoteWriter : _writer,
       schema,
       currentUserId: _requireUserId,
       newId: () => _uuid.v4(),
