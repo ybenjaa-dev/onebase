@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1
+
+- Sync indexes now match the queries that actually run: a group-scoped
+  collection is indexed by its group, a windowed one carries its date field,
+  membership lookups are indexed, and group deletes and storage listings have
+  indexes of their own.
+
 ## 0.3.0
 
 ### Teams and groups

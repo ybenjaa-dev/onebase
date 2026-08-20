@@ -296,6 +296,52 @@ await t('write: none refuses client writes to the audit log', async () => {
   assert.match(skipped[0].reason, /read-only/);
 });
 
+// ------------------------------------------------------------- indexes
+
+await t('the group, membership and window paths are all indexed', async () => {
+  const named = async (collection: string) =>
+    (await db.collection(collection).indexes()).map((i) => i.name);
+
+  // A group collection is narrowed by its group; indexing the owner instead
+  // would leave every pull scanning.
+  const chores = await db.collection('chores').indexes();
+  const sync = chores.find((i) => i.name === 'onebase_sync');
+  assert.ok(sync, `no sync index: ${chores.map((i) => i.name)}`);
+  assert.deepEqual(Object.keys(sync!.key), ['family_id', '_updated_at']);
+
+  // A windowed collection carries its date field too.
+  const messages = (await db.collection('messages').indexes())
+    .find((i) => i.name === 'onebase_sync');
+  assert.deepEqual(Object.keys(messages!.key), ['family_id', '_updated_at', 'sent_at']);
+
+  // Membership is resolved on every group request.
+  assert.ok((await named('family_members')).includes('onebase_membership'));
+
+  const tombstones = await named('_onebase_tombstones');
+  assert.ok(tombstones.includes('onebase_tombstones_group'));
+  assert.ok(tombstones.includes('onebase_ttl'));
+});
+
+await t('the planner actually uses them', async () => {
+  // A created index the planner ignores is worthless, so check the plan.
+  const plan = await db.collection('chores').find({
+    family_id: { $in: ['smith'] },
+    _updated_at: { $lte: new Date() },
+  }).sort({ _updated_at: 1, _id: 1 }).explain('queryPlanner');
+
+  const stage = JSON.stringify(plan.queryPlanner.winningPlan);
+  assert.ok(stage.includes('IXSCAN'), `expected an index scan, got ${stage}`);
+  assert.ok(!stage.includes('COLLSCAN'), 'a pull must not scan the collection');
+
+  const membership = await db.collection('family_members')
+    .find({ user_id: 'alice' })
+    .explain('queryPlanner');
+  assert.ok(
+    JSON.stringify(membership.queryPlanner.winningPlan).includes('IXSCAN'),
+    'the hottest lookup in the backend must be indexed',
+  );
+});
+
 console.log(`\n${pass} group permission checks passed`);
 await mongo.close();
 await replset.stop();

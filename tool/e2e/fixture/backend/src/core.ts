@@ -1957,23 +1957,64 @@ let indexesReady: Promise<void> | null = null;
 function ensureIndexes(client: MongoClient, env: Env): Promise<void> {
   indexesReady ??= (async () => {
     const db = client.db(env.MONGO_DB);
+
     for (const [name, spec] of Object.entries(COLLECTIONS)) {
+      // Equality first, then the sort, then any residual range — the order an
+      // index has to be in for MongoDB to use all of it. A group-scoped
+      // collection is narrowed by its group, not by an owner, so indexing the
+      // owner field there would leave every pull scanning the whole
+      // collection.
       const key: Record<string, 1> = {};
-      if (spec.ownerField) key[spec.ownerField] = 1;
+      if (spec.scope) key[scopeField(spec.scope)] = 1;
+      else if (spec.ownerField) key[spec.ownerField] = 1;
       key[UPDATED_AT] = 1;
+      // A windowed collection also filters on its date field; carrying it in
+      // the index means the window is applied without touching documents.
+      if (spec.sync?.mode === 'window' && spec.sync.field) {
+        key[spec.sync.field] = 1;
+      }
       await db.collection(name).createIndex(key, { name: 'onebase_sync' });
     }
+
+    // Membership is resolved on every request that touches a group-scoped
+    // collection, so this is the hottest lookup in the backend.
+    const membershipCollections = new Set<string>();
+    for (const membership of Object.values(MEMBERSHIPS)) {
+      const signature = `${membership.collection}:${membership.userField}:${membership.groupField}`;
+      if (membershipCollections.has(signature)) continue;
+      membershipCollections.add(signature);
+      await db.collection(membership.collection).createIndex(
+        { [membership.userField]: 1, [membership.groupField]: 1 },
+        { name: 'onebase_membership' },
+      );
+    }
+
     await db
       .collection(TOMBSTONES)
       .createIndex(
         { collection: 1, owner: 1, deleted_at: 1 },
         { name: 'onebase_tombstones' },
       );
+    // Group deletes are looked up by group, not by owner.
+    await db
+      .collection(TOMBSTONES)
+      .createIndex(
+        { collection: 1, group: 1, deleted_at: 1 },
+        { name: 'onebase_tombstones_group' },
+      );
     await db
       .collection(TOMBSTONES)
       .createIndex(
         { deleted_at: 1 },
         { name: 'onebase_ttl', expireAfterSeconds: TOMBSTONE_TTL_SECONDS },
+      );
+
+    // Listing a bucket filters by bucket and owner and sorts newest first.
+    await db
+      .collection(FILES)
+      .createIndex(
+        { bucket: 1, owner: 1, updated_at: -1 },
+        { name: 'onebase_files' },
       );
   })().catch((error: unknown) => {
     // Never block writes on index creation — retry on the next request.

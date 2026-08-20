@@ -71,7 +71,7 @@ flowchart LR
 
 ```yaml
 dependencies:
-  onebase: ^0.3.0    # requires Flutter 3.38+ / Dart 3.10+
+  onebase: ^0.3.1    # requires Flutter 3.38+ / Dart 3.10+
 ```
 
 **2. Describe your data** — `dart run onebase:setup --init` creates
