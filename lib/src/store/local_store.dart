@@ -270,8 +270,9 @@ CREATE TABLE IF NOT EXISTS $metaTable (
   Future<void> applyPull(
     String collection,
     List<Map<String, Object?>> documents,
-    String? nextCursor,
-  ) async {
+    String? nextCursor, {
+    Set<String>? replayOnly,
+  }) async {
     if (documents.isEmpty && nextCursor == null) return;
     await db.writeTransaction((tx) async {
       for (final document in documents) {
@@ -297,10 +298,26 @@ CREATE TABLE IF NOT EXISTS $metaTable (
 
       // Re-apply anything still queued so the server snapshot does not
       // visually undo a write the user just made.
-      final pending = await tx.getAll(
-        'SELECT * FROM $outboxTable WHERE collection = ? ORDER BY seq ASC',
-        [collection],
-      );
+      //
+      // Scoped where possible: a realtime event touches one document, and
+      // replaying the whole queue for each of them would turn a busy
+      // collection into quadratic work. An empty queue — the steady state —
+      // costs one cheap lookup.
+      final List<Map<String, Object?>> pending;
+      if (replayOnly != null) {
+        if (replayOnly.isEmpty) return;
+        final placeholders = List.filled(replayOnly.length, '?').join(', ');
+        pending = await tx.getAll(
+          'SELECT * FROM $outboxTable WHERE collection = ? '
+          'AND doc_id IN ($placeholders) ORDER BY seq ASC',
+          [collection, ...replayOnly],
+        );
+      } else {
+        pending = await tx.getAll(
+          'SELECT * FROM $outboxTable WHERE collection = ? ORDER BY seq ASC',
+          [collection],
+        );
+      }
       for (final row in pending) {
         final op = OutboxOp.fromRow(row);
         switch (op.op) {

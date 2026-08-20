@@ -26,26 +26,35 @@ void main() {
   group('compile', () {
     test('bare query selects everything', () {
       final compiled = query().compile();
-      expect(compiled.sql, 'SELECT * FROM "todos"');
+      expect(compiled.sql, 'SELECT * FROM "todos" ORDER BY "id" ASC');
       expect(compiled.parameters, isEmpty);
     });
 
     test('isEqualTo on text', () {
       final compiled = query().where('title', isEqualTo: 'milk').compile();
-      expect(compiled.sql, 'SELECT * FROM "todos" WHERE "title" = ?');
+      expect(
+        compiled.sql,
+        'SELECT * FROM "todos" WHERE "title" = ? ORDER BY "id" ASC',
+      );
       expect(compiled.parameters, ['milk']);
     });
 
     test('bool values encode to 0/1', () {
       final compiled = query().where('done', isEqualTo: false).compile();
-      expect(compiled.sql, 'SELECT * FROM "todos" WHERE "done" = ?');
+      expect(
+        compiled.sql,
+        'SELECT * FROM "todos" WHERE "done" = ? ORDER BY "id" ASC',
+      );
       expect(compiled.parameters, [0]);
     });
 
     test('DateTime values encode to UTC ISO-8601', () {
       final due = DateTime.utc(2026, 7, 2, 12);
       final compiled = query().where('due_at', isLessThan: due).compile();
-      expect(compiled.sql, 'SELECT * FROM "todos" WHERE "due_at" < ?');
+      expect(
+        compiled.sql,
+        'SELECT * FROM "todos" WHERE "due_at" < ? ORDER BY "id" ASC',
+      );
       expect(compiled.parameters, ['2026-07-02T12:00:00.000Z']);
     });
 
@@ -72,7 +81,7 @@ void main() {
       final compiled = query().where('priority', whereIn: [1, 2, 3]).compile();
       expect(
         compiled.sql,
-        'SELECT * FROM "todos" WHERE "priority" IN (?, ?, ?)',
+        'SELECT * FROM "todos" WHERE "priority" IN (?, ?, ?) ORDER BY "id" ASC',
       );
       expect(compiled.parameters, [1, 2, 3]);
     });
@@ -95,7 +104,7 @@ void main() {
           .compile();
       expect(
         compiled.sql,
-        'SELECT * FROM "todos" WHERE "done" = ? AND "priority" > ?',
+        'SELECT * FROM "todos" WHERE "done" = ? AND "priority" > ? ORDER BY "id" ASC',
       );
       expect(compiled.parameters, [0, 1]);
     });
@@ -117,7 +126,10 @@ void main() {
 
     test('offset without limit uses LIMIT -1', () {
       final compiled = query().offset(5).compile();
-      expect(compiled.sql, 'SELECT * FROM "todos" LIMIT -1 OFFSET ?');
+      expect(
+        compiled.sql,
+        'SELECT * FROM "todos" ORDER BY "id" ASC LIMIT -1 OFFSET ?',
+      );
       expect(compiled.parameters, [5]);
     });
 
@@ -141,7 +153,8 @@ void main() {
       expect(
         compiled.sql,
         'SELECT * FROM "todos" WHERE '
-        "json_extract(\"meta\", '\$.tags.primary') = ?",
+        "json_extract(\"meta\", '\$.tags.primary') = ? "
+        'ORDER BY "id" ASC',
       );
       expect(compiled.parameters, ['work']);
     });

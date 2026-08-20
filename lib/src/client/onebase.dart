@@ -175,7 +175,16 @@ class Onebase {
         // readers re-query the backend instead.
         final collection = config.schema.collections[event.collection];
         if (collection == null || collection.sync.isRemoteOnly) return;
-        unawaited(store.applyPull(event.collection, [event.document], null));
+        final id = event.document['id'];
+        unawaited(
+          store.applyPull(
+            event.collection,
+            [event.document],
+            null,
+            // Only this document can have pending edits worth replaying.
+            replayOnly: id is String ? {id} : const {},
+          ),
+        );
       });
 
       if (config.autoSync) engine.start();

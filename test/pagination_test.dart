@@ -180,6 +180,48 @@ void main() {
     });
   });
 
+  group('paging without an explicit orderBy', () {
+    test('still walks every row exactly once', () async {
+      // No orderBy: the query still has to have a total order, or the "last
+      // row" a cursor points at is whatever the storage engine happened to
+      // return and pages silently skip or repeat.
+      final seen = <String>[];
+      var page = await todos.limit(10).page();
+      seen.addAll(await idsOf(page));
+      while (page.hasMore) {
+        page = await todos.limit(10).startAfter(page.cursor!).page();
+        seen.addAll(await idsOf(page));
+      }
+
+      expect(seen.toSet(), hasLength(25), reason: 'no row lost or repeated');
+    });
+
+    test('holds when insertion order disagrees with id order', () async {
+      // Rows written newest-id-first, so the storage order and the key order
+      // point opposite ways. Without an explicit sort the keyset predicate
+      // filters on id while the rows arrive in some other order, and pages
+      // start dropping rows.
+      for (var i = 0; i < 20; i++) {
+        await store.insert(
+          'todos',
+          'zz-${(99 - i).toString().padLeft(2, '0')}',
+          {'title': 'reversed \$i', 'priority': 0, 'done': 0},
+          transactionId: 'tx-rev-\$i',
+        );
+      }
+
+      final seen = <String>[];
+      var page = await todos.limit(6).page();
+      seen.addAll(await idsOf(page));
+      while (page.hasMore) {
+        page = await todos.limit(6).startAfter(page.cursor!).page();
+        seen.addAll(await idsOf(page));
+      }
+
+      expect(seen.toSet(), hasLength(45), reason: '25 original + 20 reversed');
+    });
+  });
+
   group('cursors', () {
     test('round-trip through their encoded form', () {
       final cursor = QueryCursor(['a', 2, null], 'id-1');

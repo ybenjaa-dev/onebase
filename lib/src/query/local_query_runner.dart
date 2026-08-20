@@ -48,7 +48,11 @@ class LocalQueryRunner implements QueryRunner {
         ..write(conditions.join(' AND '));
     }
 
-    if (!count && spec.order.isNotEmpty) {
+    // Always ordered, even when the caller did not ask: paging compares
+    // against a key order, and without an ORDER BY the rows arrive in whatever
+    // order the plan happens to produce. Results are then also stable between
+    // identical queries, which they otherwise are not.
+    if (!count) {
       final terms = spec.effectiveOrder.map((entry) {
         final (field, descending) = entry;
         return '${resolveField(field, schema).sql}'

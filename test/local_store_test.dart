@@ -35,7 +35,7 @@ void main() {
     dir.deleteSync(recursive: true);
   });
 
-  Future<List<Map<String, Object?>>> rows() async => (await db.getAll(
+  Future<List<Map<String, Object?>>> rows_() async => (await db.getAll(
     'SELECT * FROM "todos" ORDER BY id',
   )).map(Map<String, Object?>.of).toList();
 
@@ -78,7 +78,7 @@ void main() {
         'done': 0,
       }, transactionId: 'tx-1');
 
-      expect((await rows()).single['title'], 'milk');
+      expect((await rows_()).single['title'], 'milk');
       final pending = await store.pendingOps();
       expect(pending.single.op, 'put');
       expect(pending.single.documentId, 'a');
@@ -93,7 +93,7 @@ void main() {
       }, transactionId: 'tx-1');
       await store.update('todos', 'a', {'done': 1}, transactionId: 'tx-2');
 
-      final row = (await rows()).single;
+      final row = (await rows_()).single;
       expect(row['title'], 'milk');
       expect(row['done'], 1);
       expect((await store.pendingOps()).last.op, 'patch');
@@ -105,7 +105,7 @@ void main() {
       }, transactionId: 'tx-1');
       await store.delete('todos', 'a', transactionId: 'tx-2');
 
-      expect(await rows(), isEmpty);
+      expect(await rows_(), isEmpty);
       final pending = await store.pendingOps();
       expect(pending.last.op, 'delete');
       expect(pending.last.data, isNull);
@@ -115,7 +115,7 @@ void main() {
       // Both statements share one transaction, so a crash can never leave a
       // local row that will not be uploaded.
       await store.insert('todos', 'a', {'title': 'x'}, transactionId: 'tx-1');
-      expect((await rows()).length, await store.pendingCount());
+      expect((await rows_()).length, await store.pendingCount());
     });
   });
 
@@ -125,7 +125,7 @@ void main() {
         {'id': 'srv-1', 'title': 'from server', 'done': 1},
       ], '2026-01-01T00:00:00.000Z');
 
-      expect((await rows()).single['title'], 'from server');
+      expect((await rows_()).single['title'], 'from server');
       expect(await store.cursor('todos'), '2026-01-01T00:00:00.000Z');
     });
 
@@ -137,14 +137,14 @@ void main() {
         {'id': 'srv-1', '_deleted': true},
       ], 'c2');
 
-      expect(await rows(), isEmpty);
+      expect(await rows_(), isEmpty);
     });
 
     test('accepts _id as well as id', () async {
       await store.applyPull('todos', [
         {'_id': 'srv-1', 'title': 'x'},
       ], 'c1');
-      expect((await rows()).single['id'], 'srv-1');
+      expect((await rows_()).single['id'], 'srv-1');
     });
 
     test(
@@ -163,7 +163,7 @@ void main() {
           {'id': 'a', 'title': 'server title', 'done': 1},
         ], 'c2');
 
-        final row = (await rows()).single;
+        final row = (await rows_()).single;
         expect(row['title'], 'my edit', reason: 'local edit must survive');
         expect(row['done'], 1, reason: 'untouched server field must apply');
       },
@@ -179,7 +179,50 @@ void main() {
         {'id': 'a', 'title': 'x'},
       ], 'c2');
 
-      expect(await rows(), isEmpty);
+      expect(await rows_(), isEmpty);
+    });
+
+    test('a scoped replay only reapplies the named document', () async {
+      await store.applyPull('todos', [
+        {'id': 'a', 'title': 'server a'},
+        {'id': 'b', 'title': 'server b'},
+      ], 'c1');
+
+      // Two pending edits; a realtime event for 'a' must not have to walk
+      // both, and must not resurrect the edit to 'b'.
+      await store.update('todos', 'a', {
+        'title': 'my edit a',
+      }, transactionId: 'tx-a');
+      await store.update('todos', 'b', {
+        'title': 'my edit b',
+      }, transactionId: 'tx-b');
+
+      await store.applyPull(
+        'todos',
+        [
+          {'id': 'a', 'title': 'server a2'},
+          {'id': 'b', 'title': 'server b2'},
+        ],
+        null,
+        replayOnly: {'a'},
+      );
+
+      final rows = await rows_();
+      expect(rows.firstWhere((r) => r['id'] == 'a')['title'], 'my edit a');
+      expect(
+        rows.firstWhere((r) => r['id'] == 'b')['title'],
+        'server b2',
+        reason: 'outside the scope, the server value stands',
+      );
+    });
+
+    test('an empty replay scope skips the queue entirely', () async {
+      await store.insert('todos', 'a', {
+        'title': 'mine',
+      }, transactionId: 'tx-1');
+      // Nothing to reapply, so the pull must not undo the local row either.
+      await store.applyPull('todos', const [], null, replayOnly: const {});
+      expect((await rows_()).single['title'], 'mine');
     });
 
     test('does nothing when there is nothing to apply', () async {
@@ -219,7 +262,7 @@ void main() {
 
       await store.clear();
 
-      expect(await rows(), isEmpty);
+      expect(await rows_(), isEmpty);
       expect(await store.pendingCount(), 0);
       expect(await store.cursor('todos'), isNull);
     });

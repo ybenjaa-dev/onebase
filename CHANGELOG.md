@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2
+
+- Every query carries a total order, so results are stable between identical
+  calls and paging compares against the order the database actually produced.
+- A realtime change replays only the pending edits for the document it touches
+  rather than the whole queue, which kept a busy collection from doing work
+  proportional to the queue on every event.
+
 ## 0.3.1
 
 - Sync indexes now match the queries that actually run: a group-scoped
