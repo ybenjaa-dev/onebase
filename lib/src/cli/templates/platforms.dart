@@ -23,6 +23,7 @@ Map<String, String> generateBackendFiles(OnebaseSchema schema) {
     'tsconfig.json': _tsconfig,
     'Dockerfile': _dockerfile,
     '.dockerignore': _dockerignore,
+    '.gitignore': _gitignore,
     'vercel.json': _vercelJson,
     '.env.example': _envExample,
     'README.md': _readme,
@@ -168,9 +169,12 @@ const _packageJson = '''
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/server.js",
-    "dev": "tsx src/server.ts",
+    "start": "node --env-file-if-exists=.env dist/server.js",
+    "dev": "tsx --env-file-if-exists=.env src/server.ts",
     "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20.12"
   },
   "dependencies": {
     "jose": "^6.2.9",
@@ -221,6 +225,13 @@ const _dockerignore = '''
 node_modules
 dist
 .env
+''';
+
+const _gitignore = '''
+node_modules
+dist
+.env
+.env.local
 ''';
 
 const _vercelJson = '''
