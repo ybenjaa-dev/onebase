@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.4
+
+- The generated backend loads its own `.env`, so the documented quickstart —
+  `cp .env.example .env` then `npm run dev` — starts instead of exiting on a
+  missing `AUTH_MODE`. Docker and Vercel were unaffected; only running it
+  locally was broken.
+- The backend is generated with a `.gitignore`, so the `.env` you just filled
+  with a connection string and S3 keys does not follow the rest of the project
+  into a commit.
+
 ## 0.3.3
 
 - Generated Dart now goes through `dart format` as it is written, so
