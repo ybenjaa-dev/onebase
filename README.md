@@ -25,6 +25,15 @@ await OnebaseDb.todos.insert(Todo(title: 'Ship it', done: false));
 await Onebase.storage.ref('avatars/me.png').putData(bytes);
 ```
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ybenjaa-dev/onebase/main/example/demo/onebase-demo.gif"
+       alt="Writing todos with the backend down, then watching them sync when it returns"
+       width="320">
+</p>
+
+<p align="center"><em>The backend is killed mid-demo. Writes keep landing, the
+outbox counts them, and everything syncs when it comes back.</em></p>
+
 ---
 
 ## Why
@@ -71,7 +80,7 @@ flowchart LR
 
 ```yaml
 dependencies:
-  onebase: ^0.3.2    # requires Flutter 3.38+ / Dart 3.10+
+  onebase: ^0.3.4    # requires Flutter 3.38+ / Dart 3.10+
 ```
 
 **2. Describe your data** — `dart run onebase:setup --init` creates
