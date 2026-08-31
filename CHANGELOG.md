@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.5
+
+- The conflict story in the README now matches the engine: last-write-wins
+  applies per field, because `update()` uploads only the fields it changed.
+  Concurrent edits to different fields of one document merge instead of
+  clobbering each other; same-field edits resolve by server commit order.
+- `tool/record_demo.sh` works from a fresh clone: it scaffolds the iOS runner
+  the repo does not ship, and refuses early with instructions when no
+  simulator is booted instead of failing on a null device id.
+
 ## 0.3.4
 
 - The generated backend loads its own `.env`, so the documented quickstart —
