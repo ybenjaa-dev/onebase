@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.6
+
+- Added `exportLocalData()` / `importLocalData()`. Offline-first means the
+  device is the source of truth between syncs, and until now a dormant
+  install had no way out if its backend ever disappeared — no export, no
+  backup. Export returns everything currently on the device as plain JSON;
+  import restores it on a new device, after a reinstall, or against a new
+  backend, queuing every row for upload unless told not to.
+
 ## 0.3.5
 
 - The conflict story in the README now matches the engine: last-write-wins
