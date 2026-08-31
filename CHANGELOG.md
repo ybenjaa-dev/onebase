@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.7
+
+- Added `increment()` on collections and batches — an atomic `$inc` for
+  balances, stock counts and anything else you add to rather than replace.
+  `update()` is a `$set`: two devices bumping the same counter at once means
+  one write just erases the other. `increment()` fixes that specifically,
+  because addition commutes and doesn't care which delta the server saw
+  first.
+
 ## 0.3.6
 
 - Added `exportLocalData()` / `importLocalData()`. Offline-first means the
