@@ -12,6 +12,20 @@ OUT_DIR="${OUT_DIR:-$(pwd)/demo}"
 BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../backend" && pwd)"
 EXAMPLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+if [ -z "$DEVICE" ] || [ "$DEVICE" = "null" ]; then
+  echo "no booted iOS simulator. Boot one first:" >&2
+  echo "  xcrun simctl list devices   # pick a udid" >&2
+  echo "  xcrun simctl boot <udid> && open -a Simulator" >&2
+  exit 1
+fi
+
+# The repo does not ship an iOS runner (example/ios/ is gitignored), so a
+# fresh clone needs one scaffolded before flutter can target the simulator.
+if [ ! -d "$EXAMPLE_DIR/ios" ]; then
+  echo "==> scaffolding the iOS runner"
+  (cd "$EXAMPLE_DIR" && flutter create --platforms=ios . >/dev/null)
+fi
+
 mkdir -p "$OUT_DIR"
 MOV="$OUT_DIR/demo.mov"
 GIF="$OUT_DIR/onebase-demo.gif"
