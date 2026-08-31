@@ -23,5 +23,16 @@ abstract interface class DocumentWriter {
     String? transactionId,
   });
 
+  /// Adds [deltas] to numeric fields — atomic on the server (`$inc`), so
+  /// concurrent increments from different devices always both land, in
+  /// either order, instead of one overwriting the other the way [update]
+  /// would.
+  Future<void> increment(
+    String collection,
+    String id,
+    Map<String, num> deltas, {
+    String? transactionId,
+  });
+
   Future<void> delete(String collection, String id, {String? transactionId});
 }

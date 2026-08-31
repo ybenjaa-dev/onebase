@@ -29,6 +29,10 @@ class TypedCollection<T> {
   Future<void> update(String id, Map<String, Object?> changes) =>
       _collection.update(id, changes);
 
+  /// See [MongoCollection.increment].
+  Future<void> increment(String id, Map<String, num> deltas) =>
+      _collection.increment(id, deltas);
+
   Future<void> delete(String id) => _collection.delete(id);
 
   Future<T?> findById(String id) async {

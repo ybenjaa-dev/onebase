@@ -33,6 +33,20 @@ class RemoteWriter implements DocumentWriter {
   }) => _send('patch', collection, id, encoded, transactionId);
 
   @override
+  Future<void> increment(
+    String collection,
+    String id,
+    Map<String, num> deltas, {
+    String? transactionId,
+  }) => _send(
+    'inc',
+    collection,
+    id,
+    deltas.cast<String, Object?>(),
+    transactionId,
+  );
+
+  @override
   Future<void> delete(String collection, String id, {String? transactionId}) =>
       _send('delete', collection, id, null, transactionId);
 

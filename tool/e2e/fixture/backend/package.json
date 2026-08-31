@@ -4,9 +4,12 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/server.js",
-    "dev": "tsx src/server.ts",
+    "start": "node --env-file-if-exists=.env dist/server.js",
+    "dev": "tsx --env-file-if-exists=.env src/server.ts",
     "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20.12"
   },
   "dependencies": {
     "jose": "^6.2.9",

@@ -33,7 +33,8 @@ void main() {
       final batch = WriteBatch(writer, schema, ownerId: 'user-1');
       batch.insert('orders', {'total': 42});
       batch.update('inventory', 'stock-1', {'count': 9});
-      batch.delete('inventory', 'stock-2');
+      batch.increment('inventory', 'stock-2', {'count': -1});
+      batch.delete('inventory', 'stock-3');
       await batch.commit();
 
       final ids = writer.writes.map((w) => w.transactionId).toSet();
@@ -64,9 +65,10 @@ void main() {
       batch.insert('orders', {'total': 1}, id: 'a');
       batch.delete('orders', 'b');
       batch.update('orders', 'c', {'total': 2});
+      batch.increment('orders', 'd', {'total': 1});
       await batch.commit();
 
-      expect(writer.writes.map((w) => w.op), ['put', 'delete', 'patch']);
+      expect(writer.writes.map((w) => w.op), ['put', 'delete', 'patch', 'inc']);
     });
   });
 
@@ -169,6 +171,30 @@ void main() {
       expect(
         () => batch.insert('orders', {'total': 1}),
         throwsA(isA<InvalidTokenException>()),
+      );
+    });
+
+    test('rejects an empty increment', () {
+      final batch = WriteBatch(writer, schema, ownerId: 'user-1');
+      expect(
+        () => batch.increment('inventory', 'a', {}),
+        throwsA(isA<QueryException>()),
+      );
+    });
+
+    test('rejects incrementing an unknown field', () {
+      final batch = WriteBatch(writer, schema, ownerId: 'user-1');
+      expect(
+        () => batch.increment('inventory', 'a', {'nope': 1}),
+        throwsA(isA<UnknownFieldException>()),
+      );
+    });
+
+    test('rejects incrementing a non-numeric field', () {
+      final batch = WriteBatch(writer, schema, ownerId: 'user-1');
+      expect(
+        () => batch.increment('orders', 'a', {'owner_id': 1}),
+        throwsA(isA<QueryException>()),
       );
     });
   });

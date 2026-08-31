@@ -102,6 +102,38 @@ class WriteBatch {
     );
   }
 
+  /// Queues an atomic increment. See [MongoCollection.increment].
+  void increment(String collection, String id, Map<String, num> deltas) {
+    _ensureOpen();
+    if (deltas.isEmpty) {
+      throw const QueryException('increment() received no deltas.');
+    }
+    final schema = _schema.collection(collection);
+    final encoded = <String, num>{};
+    for (final MapEntry(:key, :value) in deltas.entries) {
+      final type = schema.fieldType(key);
+      if (type != MongoFieldType.int && type != MongoFieldType.double) {
+        throw QueryException(
+          'increment() field "$key" on "$collection" is not numeric.',
+          hint:
+              'Only int and double fields can be incremented — "$key" is '
+              '${type.name}.',
+        );
+      }
+      encoded[key] =
+          ValueCodec.encode(value, type, field: key, collection: collection)
+              as num;
+    }
+    _operations.add(
+      () => _writer.increment(
+        collection,
+        id,
+        encoded,
+        transactionId: _transactionId,
+      ),
+    );
+  }
+
   /// Queues a delete.
   void delete(String collection, String id) {
     _ensureOpen();

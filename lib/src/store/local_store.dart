@@ -31,7 +31,7 @@ class OutboxOp {
   /// Groups ops written together so the backend can apply them atomically.
   final String transactionId;
 
-  /// `put`, `patch` or `delete`.
+  /// `put`, `patch`, `inc` or `delete`.
   final String op;
   final String collection;
   final String documentId;
@@ -154,6 +154,32 @@ CREATE TABLE IF NOT EXISTS $metaTable (
     });
   }
 
+  /// Adds [deltas] to numeric fields, locally and in the outbox, atomically.
+  ///
+  /// Unlike [update], this is safe to apply more than once from more than
+  /// one device: two pending increments to the same field add up instead of
+  /// one overwriting the other, and replaying one on top of a fresher server
+  /// snapshot (see [applyPull]) still lands the right total rather than
+  /// clobbering whatever the snapshot just brought down.
+  Future<void> increment(
+    String collection,
+    String id,
+    Map<String, num> deltas, {
+    required String transactionId,
+  }) async {
+    await db.writeTransaction((tx) async {
+      await _applyIncrement(tx, collection, id, deltas);
+      await _enqueue(
+        tx,
+        transactionId,
+        'inc',
+        collection,
+        id,
+        deltas.cast<String, Object?>(),
+      );
+    });
+  }
+
   /// Deletes locally and queues it, atomically.
   Future<void> delete(
     String collection,
@@ -213,6 +239,24 @@ CREATE TABLE IF NOT EXISTS $metaTable (
     final assignments = encoded.keys.map((k) => '"$k" = ?').join(', ');
     await tx.execute('UPDATE "$collection" SET $assignments WHERE id = ?', [
       ...encoded.values,
+      id,
+    ]);
+  }
+
+  /// `COALESCE(...,0)` mirrors MongoDB's own `$inc`: a field that has never
+  /// been set is treated as starting from zero rather than staying null.
+  static Future<void> _applyIncrement(
+    SqliteWriteContext tx,
+    String collection,
+    String id,
+    Map<String, num> deltas,
+  ) async {
+    if (deltas.isEmpty) return;
+    final assignments = deltas.keys
+        .map((k) => '"$k" = COALESCE("$k", 0) + ?')
+        .join(', ');
+    await tx.execute('UPDATE "$collection" SET $assignments WHERE id = ?', [
+      ...deltas.values,
       id,
     ]);
   }
@@ -331,6 +375,13 @@ CREATE TABLE IF NOT EXISTS $metaTable (
               collection,
               op.documentId,
               op.data ?? const {},
+            );
+          case 'inc':
+            await _applyIncrement(
+              tx,
+              collection,
+              op.documentId,
+              (op.data ?? const {}).cast<String, num>(),
             );
           case 'delete':
             await tx.execute('DELETE FROM "$collection" WHERE id = ?', [

@@ -94,6 +94,24 @@ class FakeWriter implements DocumentWriter {
   }
 
   @override
+  Future<void> increment(
+    String collection,
+    String id,
+    Map<String, num> deltas, {
+    String? transactionId,
+  }) async {
+    writes.add(
+      RecordedWrite(
+        'inc',
+        collection,
+        id,
+        deltas.cast<String, Object?>(),
+        transactionId,
+      ),
+    );
+  }
+
+  @override
   Future<void> delete(
     String collection,
     String id, {

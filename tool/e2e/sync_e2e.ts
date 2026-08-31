@@ -225,6 +225,63 @@ await t('a partial update is exempt from required fields', async () => {
   assert.equal((await todos.findOne({ _id: 'req2' as never }))!.done, true);
 });
 
+// ---------------------------------------------------------------------- inc
+
+await t('inc is atomic and adds to the stored value', async () => {
+  await push(alice, [
+    { op: 'put', collection: 'todos', id: 'inc1', data: { title: 'counter', done: false, priority: 10 } },
+  ]);
+  await push(alice, [{ op: 'inc', collection: 'todos', id: 'inc1', data: { priority: 5 } }]);
+  assert.equal((await todos.findOne({ _id: 'inc1' as never }))!.priority, 15);
+});
+
+await t('a field never touched starts from zero, not null', async () => {
+  await push(alice, [
+    { op: 'put', collection: 'todos', id: 'inc2', data: { title: 'fresh', done: false } },
+  ]);
+  await push(alice, [{ op: 'inc', collection: 'todos', id: 'inc2', data: { priority: 3 } }]);
+  assert.equal((await todos.findOne({ _id: 'inc2' as never }))!.priority, 3);
+});
+
+await t('two increments in either arrival order both land', async () => {
+  await push(alice, [
+    { op: 'put', collection: 'todos', id: 'inc3', data: { title: 'race', done: false, priority: 0 } },
+  ]);
+  // Two devices racing on the same counter: order must not matter, since
+  // $inc commutes and neither write can silently erase the other.
+  await Promise.all([
+    push(alice, [{ op: 'inc', collection: 'todos', id: 'inc3', data: { priority: 4 } }]),
+    push(alice, [{ op: 'inc', collection: 'todos', id: 'inc3', data: { priority: -1 } }]),
+  ]);
+  assert.equal((await todos.findOne({ _id: 'inc3' as never }))!.priority, 3);
+});
+
+await t('inc on a non-numeric or unknown field is dropped, not applied', async () => {
+  await push(alice, [
+    { op: 'put', collection: 'todos', id: 'inc4', data: { title: 'x', done: false, priority: 1 } },
+  ]);
+  const res = await push(alice, [
+    {
+      op: 'inc', collection: 'todos', id: 'inc4',
+      data: { priority: 1, title: 'nope', ghost_field: 9 },
+    },
+  ]);
+  const body = await res.json() as any;
+  assert.deepEqual(body.dropped[0].fields.sort(), ['ghost_field', 'title']);
+  const doc = await todos.findOne({ _id: 'inc4' as never });
+  assert.equal(doc!.priority, 2, 'the legit numeric field still applied');
+  assert.equal(doc!.title, 'x', 'title left untouched, not overwritten or incremented');
+});
+
+await t('inc cannot touch a document owned by another user', async () => {
+  await push(alice, [
+    { op: 'put', collection: 'todos', id: 'inc5', data: { title: 'mine', done: false, priority: 10 } },
+  ]);
+  const res = await push(bob, [{ op: 'inc', collection: 'todos', id: 'inc5', data: { priority: 100 } }]);
+  assert.equal((await res.json() as any).skipped.length, 1);
+  assert.equal((await todos.findOne({ _id: 'inc5' as never }))!.priority, 10, 'unchanged');
+});
+
 // ----------------------------------------------------------------- /query
 
 const query = (token: string, body: Record<string, unknown>) =>

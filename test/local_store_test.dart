@@ -12,6 +12,7 @@ void main() {
       fields: {
         'title': MongoFieldType.text,
         'done': MongoFieldType.bool,
+        'priority': MongoFieldType.int,
         'owner_id': MongoFieldType.text,
       },
       ownerField: 'owner_id',
@@ -117,6 +118,77 @@ void main() {
       await store.insert('todos', 'a', {'title': 'x'}, transactionId: 'tx-1');
       expect((await rows_()).length, await store.pendingCount());
     });
+  });
+
+  group('increment', () {
+    test('adds to the local value and queues an inc op', () async {
+      await store.insert('todos', 'a', {
+        'title': 'x',
+        'priority': 1,
+      }, transactionId: 'tx-1');
+
+      await store.increment('todos', 'a', {
+        'priority': 4,
+      }, transactionId: 'tx-2');
+
+      expect((await rows_()).single['priority'], 5);
+      final ops = await store.pendingOps();
+      expect(ops.last.op, 'inc');
+      expect(ops.last.data, {'priority': 4});
+    });
+
+    test('a field never set starts from zero, not null', () async {
+      await store.insert('todos', 'a', {'title': 'x'}, transactionId: 'tx-1');
+
+      await store.increment('todos', 'a', {
+        'priority': 3,
+      }, transactionId: 'tx-2');
+
+      expect((await rows_()).single['priority'], 3);
+    });
+
+    test('two pending increments to the same field add up', () async {
+      await store.insert('todos', 'a', {
+        'title': 'x',
+        'priority': 0,
+      }, transactionId: 'tx-1');
+
+      await store.increment('todos', 'a', {
+        'priority': 2,
+      }, transactionId: 'tx-2');
+      await store.increment('todos', 'a', {
+        'priority': -5,
+      }, transactionId: 'tx-3');
+
+      expect((await rows_()).single['priority'], -3);
+      expect(await store.pendingCount(), 3);
+    });
+
+    test(
+      'a pending increment replays on top of a fresher server snapshot',
+      () async {
+        // The server's own count already reflects other devices' writes —
+        // the pending local increment must still add to it, not overwrite
+        // it and not be dropped.
+        await store.applyPull('todos', [
+          {'id': 'a', 'title': 'x', 'priority': 10},
+        ], 'c1');
+        await store.increment('todos', 'a', {
+          'priority': 1,
+        }, transactionId: 'tx-1');
+        expect((await rows_()).single['priority'], 11);
+
+        await store.applyPull('todos', [
+          {'id': 'a', 'title': 'x', 'priority': 20},
+        ], 'c2');
+
+        expect(
+          (await rows_()).single['priority'],
+          21,
+          reason: 'the pending +1 must land on top of the new snapshot too',
+        );
+      },
+    );
   });
 
   group('applyPull', () {

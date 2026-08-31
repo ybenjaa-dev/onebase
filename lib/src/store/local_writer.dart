@@ -40,6 +40,19 @@ class LocalWriter implements DocumentWriter {
   );
 
   @override
+  Future<void> increment(
+    String collection,
+    String id,
+    Map<String, num> deltas, {
+    String? transactionId,
+  }) => _store.increment(
+    collection,
+    id,
+    deltas,
+    transactionId: transactionId ?? _uuid.v4(),
+  );
+
+  @override
   Future<void> delete(String collection, String id, {String? transactionId}) =>
       _store.delete(collection, id, transactionId: transactionId ?? _uuid.v4());
 }

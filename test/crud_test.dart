@@ -14,6 +14,8 @@ void main() {
       'done': MongoFieldType.bool,
       'due_at': MongoFieldType.datetime,
       'meta': MongoFieldType.json,
+      'priority': MongoFieldType.int,
+      'score': MongoFieldType.double,
       'owner_id': MongoFieldType.text,
     },
     ownerField: 'owner_id',
@@ -103,6 +105,51 @@ void main() {
       expect(
         () => collection().update('abc', {'ghost': 1}),
         throwsA(isA<UnknownFieldException>()),
+      );
+    });
+  });
+
+  group('increment', () {
+    test('queues an inc op with the raw deltas', () async {
+      await collection().increment('abc', {'priority': 2, 'score': 1.5});
+      final write = writer.lastWrite;
+      expect(write.op, 'inc');
+      expect(write.id, 'abc');
+      expect(write.data, {'priority': 2, 'score': 1.5});
+    });
+
+    test('coerces an int delta to double for a double field', () async {
+      await collection().increment('abc', {'score': 1});
+      expect(writer.lastWrite.data!['score'], 1.0);
+    });
+
+    test('rejects empty deltas', () {
+      expect(
+        () => collection().increment('abc', {}),
+        throwsA(isA<QueryException>()),
+      );
+    });
+
+    test('rejects unknown fields', () {
+      expect(
+        () => collection().increment('abc', {'ghost': 1}),
+        throwsA(isA<UnknownFieldException>()),
+      );
+    });
+
+    test('rejects a field that is declared but not numeric', () {
+      expect(
+        () => collection().increment('abc', {'title': 1}),
+        throwsA(isA<QueryException>()),
+      );
+    });
+
+    test('a fractional delta on an int field is refused, not truncated', () {
+      // Silently flooring 1.5 to 1 would apply a different change than the
+      // caller asked for.
+      expect(
+        () => collection().increment('abc', {'priority': 1.5}),
+        throwsA(isA<QueryException>()),
       );
     });
   });

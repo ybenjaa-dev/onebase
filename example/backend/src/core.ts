@@ -101,7 +101,7 @@ const UPLOAD_URL_TTL_SECONDS = 15 * 60;
 const DOWNLOAD_URL_TTL_SECONDS = 60 * 60;
 
 interface UploadOp {
-  op: 'put' | 'patch' | 'delete';
+  op: 'put' | 'patch' | 'inc' | 'delete';
   collection: string;
   id: string;
   data?: Record<string, unknown>;
@@ -455,6 +455,33 @@ function convertDocument(
   return { doc, dropped };
 }
 
+/**
+ * Narrows an `inc` op's deltas to declared `int`/`double` fields carrying a
+ * finite numeric value. Everything else — a field the schema never
+ * declared, a field that exists but is not numeric (ownership and scope
+ * fields included), a non-numeric value — is dropped and reported the same
+ * way `convertDocument` reports fields it refuses, rather than silently
+ * ignored or applied wrong.
+ */
+function convertIncrement(
+  data: Record<string, unknown>,
+  spec: CollectionSpec,
+): ConvertedDocument {
+  const doc: Record<string, unknown> = {};
+  const dropped: string[] = [];
+  for (const [key, value] of Object.entries(data)) {
+    const type = spec.fields[key];
+    const isNumericField = type === 'int' || type === 'double';
+    const isFiniteNumber = typeof value === 'number' && Number.isFinite(value);
+    if (isNumericField && isFiniteNumber) {
+      doc[key] = value;
+    } else if (!RESERVED_FIELDS.has(key)) {
+      dropped.push(key);
+    }
+  }
+  return { doc, dropped };
+}
+
 // onebase generates UUID string ids; documents created server-side may
 // use ObjectId. Match either representation. Always an `$in` so the filter
 // never contributes a derived `_id` to an upsert (which would conflict with
@@ -514,7 +541,7 @@ function isTransactionUnsupportedError(error: unknown): boolean {
 function parseOp(raw: unknown): UploadOp | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const { op, collection, id, data } = raw as Record<string, unknown>;
-  if (op !== 'put' && op !== 'patch' && op !== 'delete') return null;
+  if (op !== 'put' && op !== 'patch' && op !== 'inc' && op !== 'delete') return null;
   if (typeof collection !== 'string' || collection.length === 0) return null;
   if (typeof id !== 'string' || id.length === 0) return null;
   if (data !== undefined && (typeof data !== 'object' || data === null || Array.isArray(data))) {
@@ -779,6 +806,38 @@ async function applyOps(
         const updated = await collection.updateOne(
           scopedFilter,
           { $set: changes },
+          { session },
+        );
+        if (updated.matchedCount === 0) {
+          skipped.push({
+            id: op.id,
+            collection: op.collection,
+            reason: 'not found or not owned by this user',
+          });
+        } else {
+          applied++;
+        }
+      } else if (op.op === 'inc') {
+        const { doc: deltas, dropped: unknownFields } = convertIncrement(op.data ?? {}, spec);
+        if (unknownFields.length > 0) {
+          dropped.push({ id: op.id, collection: op.collection, fields: unknownFields });
+        }
+        if (owner) delete deltas[owner]; // ownership can't be incremented
+        if (spec.scope && spec.scope.field !== 'id') {
+          delete deltas[spec.scope.field];
+        }
+        if (Object.keys(deltas).length === 0) {
+          applied++;
+          continue;
+        }
+        // $inc is atomic and commutes: two devices incrementing the same
+        // field at once both land, in whichever order they arrive, unlike
+        // patch's $set which would let the second one silently erase the
+        // first. UPDATED_AT is a separate $set — incrementing a date field
+        // makes no sense and Mongo would reject mixing operators on it.
+        const updated = await collection.updateOne(
+          scopedFilter,
+          { $inc: deltas, $set: { [UPDATED_AT]: now } },
           { session },
         );
         if (updated.matchedCount === 0) {

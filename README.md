@@ -252,6 +252,22 @@ Offline the whole batch is queued as a unit, so it stays atomic even if the app
 is killed before it syncs. Insert returns its id immediately, so later
 operations in the same batch can reference it.
 
+## Balances and counters
+
+`update()` is a `$set` — the last write wins, full stop. That's fine for a
+title or a status, but wrong for anything you add to: two devices bumping a
+stock count or a wallet balance at the same time, with `update`, means one of
+them just gets overwritten. `increment()` is a `$inc` instead:
+
+```dart
+await Onebase.instance.collection('inventory').increment(stockId, {'count': -1});
+```
+
+Both devices' deltas land, in whichever order they arrive, because addition
+commutes and `$set` doesn't. A field that's never been touched is treated as
+starting from zero. It works inside a batch too — `batch.increment(...)` — and
+only on fields declared `int` or `double` in your schema.
+
 ## Offline or online
 
 ```dart

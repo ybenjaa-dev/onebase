@@ -57,6 +57,43 @@ class MongoCollection {
     await _writer.update(_schema.name, id, _encode(changes));
   }
 
+  /// Adds [deltas] to numeric fields on the document with [id] — atomic on
+  /// the server via MongoDB's `$inc`.
+  ///
+  /// Unlike [update], this is safe for two devices to do at once: both
+  /// deltas land, in whichever order they arrive, because addition
+  /// commutes. `update(id, {'count': 5})` cannot do this — it always means
+  /// "set it to 5," so the second device to write always erases the first.
+  /// Use `increment` for balances, stock counts, or anything else where the
+  /// change matters more than the value one device happened to see last.
+  ///
+  /// Every key must be a declared `int` or `double` field.
+  Future<void> increment(String id, Map<String, num> deltas) async {
+    if (deltas.isEmpty) {
+      throw const QueryException('increment() received no deltas.');
+    }
+    await _writer.increment(_schema.name, id, _encodeDeltas(deltas));
+  }
+
+  Map<String, num> _encodeDeltas(Map<String, num> deltas) {
+    final encoded = <String, num>{};
+    for (final MapEntry(:key, :value) in deltas.entries) {
+      final type = _schema.fieldType(key);
+      if (type != MongoFieldType.int && type != MongoFieldType.double) {
+        throw QueryException(
+          'increment() field "$key" on "${_schema.name}" is not numeric.',
+          hint:
+              'Only int and double fields can be incremented — "$key" is '
+              '${type.name}.',
+        );
+      }
+      encoded[key] =
+          ValueCodec.encode(value, type, field: key, collection: _schema.name)
+              as num;
+    }
+    return encoded;
+  }
+
   Map<String, Object?> _encode(Map<String, Object?> document) {
     return {
       for (final MapEntry(:key, :value) in document.entries)
