@@ -466,14 +466,16 @@ function convertDocument(
 function convertIncrement(
   data: Record<string, unknown>,
   spec: CollectionSpec,
-): ConvertedDocument {
-  const doc: Record<string, unknown> = {};
+): { doc: Record<string, number>; dropped: string[] } {
+  const doc: Record<string, number> = {};
   const dropped: string[] = [];
   for (const [key, value] of Object.entries(data)) {
     const type = spec.fields[key];
     const isNumericField = type === 'int' || type === 'double';
-    const isFiniteNumber = typeof value === 'number' && Number.isFinite(value);
-    if (isNumericField && isFiniteNumber) {
+    // The `typeof` check is written inline, not hoisted into a separate
+    // boolean, so TypeScript narrows `value` to `number` right here — that's
+    // what lets `doc[key] = value` type-check as a number, not `unknown`.
+    if (isNumericField && typeof value === 'number' && Number.isFinite(value)) {
       doc[key] = value;
     } else if (!RESERVED_FIELDS.has(key)) {
       dropped.push(key);
