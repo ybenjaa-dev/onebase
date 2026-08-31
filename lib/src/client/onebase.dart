@@ -299,6 +299,40 @@ class Onebase {
     _currentUserId = null;
   }
 
+  /// Every locally held row, keyed by collection name — a portable snapshot
+  /// of everything on this device.
+  ///
+  /// Offline-first means the device is the source of truth between syncs,
+  /// so if the backend it talks to is ever retired, this export is what a
+  /// dormant install still has: call it from a "back up my data" action, or
+  /// on a schedule, and store the result (e.g. `jsonEncode` it to a file or
+  /// your own bucket) before you decommission a backend. Returns an empty
+  /// map in online mode, which caches nothing.
+  Future<Map<String, List<Map<String, Object?>>>> exportLocalData() async =>
+      await _store?.exportAll() ?? const {};
+
+  /// Restores rows produced by [exportLocalData] — after a reinstall, on a
+  /// new device, or when moving an existing user to a new backend.
+  ///
+  /// With [reupload] true (the default) every restored row is queued for
+  /// upload on the next sync, so whichever backend this client is currently
+  /// configured against receives it. Pass false to restore silently against
+  /// the backend the export already came from. Requires offline mode.
+  Future<void> importLocalData(
+    Map<String, List<Map<String, Object?>>> data, {
+    bool reupload = true,
+  }) async {
+    final store = _store;
+    if (store == null) {
+      throw const ConfigurationException(
+        'importLocalData requires offline mode — there is no local replica '
+        'to restore into in online mode.',
+        hint: 'Call Onebase.init with mode: OnebaseMode.offline.',
+      );
+    }
+    await store.importAll(data, reupload: reupload);
+  }
+
   /// Stops syncing and releases everything.
   static Future<void> close() async {
     final instance = _instance;

@@ -80,7 +80,7 @@ flowchart LR
 
 ```yaml
 dependencies:
-  onebase: ^0.3.5    # requires Flutter 3.38+ / Dart 3.10+
+  onebase: ^0.3.6    # requires Flutter 3.38+ / Dart 3.10+
 ```
 
 **2. Describe your data** — `dart run onebase:setup --init` creates
@@ -271,6 +271,31 @@ OnebaseConfig(
 | Storage on device | a few MB | none |
 
 Your app code is identical in both. Switching is one line.
+
+## Backing up the local replica
+
+Offline-first means the device is the source of truth between syncs — which
+also means a dormant install is holding data your backend has never seen
+confirmed, or may not exist to serve back. `exportLocalData()` is the escape
+hatch: everything currently on the device, as plain JSON.
+
+```dart
+final snapshot = await Onebase.instance.exportLocalData();
+await File('backup.json').writeAsString(jsonEncode(snapshot));
+```
+
+Call it from a "back up my data" action, or periodically, and keep the result
+somewhere that outlives your backend — your own bucket, a file the user can
+export, wherever. To restore it, on a new device, after a reinstall, or
+against a new backend entirely:
+
+```dart
+final snapshot = jsonDecode(await File('backup.json').readAsString());
+await Onebase.instance.importLocalData(snapshot);   // queues everything for upload
+```
+
+Pass `reupload: false` to restore silently against the backend the data
+already came from, without re-queuing it for another push.
 
 ## Files
 

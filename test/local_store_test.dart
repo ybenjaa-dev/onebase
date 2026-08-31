@@ -267,4 +267,118 @@ void main() {
       expect(await store.cursor('todos'), isNull);
     });
   });
+
+  group('exportAll / importAll', () {
+    test('export includes synced rows and edits still in the outbox', () async {
+      await store.applyPull('todos', [
+        {'id': 'a', 'title': 'synced', updatedAtColumn: '2026-01-01'},
+      ], 'cursor-1');
+      await store.insert('todos', 'b', {
+        'title': 'still uploading',
+      }, transactionId: 'tx-1');
+
+      final export = await store.exportAll();
+
+      expect(export.keys, ['todos']);
+      final titles = {
+        for (final row in export['todos']!) row['id']: row['title'],
+      };
+      expect(titles, {'a': 'synced', 'b': 'still uploading'});
+    });
+
+    test('a remote-only collection is not exported', () async {
+      final withRemoteOnly = OnebaseSchema([
+        ...schema.collections.values,
+        MongoCollectionSchema(
+          'audit_log',
+          fields: {
+            'note': MongoFieldType.text,
+            'owner_id': MongoFieldType.text,
+          },
+          ownerField: 'owner_id',
+          sync: const SyncPolicy(mode: SyncMode.none),
+        ),
+      ]);
+      final remoteStore = LocalStore(db, withRemoteOnly);
+      await remoteStore.migrate();
+
+      final export = await remoteStore.exportAll();
+
+      expect(export.keys, isNot(contains('audit_log')));
+    });
+
+    test('import restores rows into a fresh store', () async {
+      final exported = {
+        'todos': [
+          {'id': 'a', 'title': 'restored', 'done': 0, updatedAtColumn: 't1'},
+        ],
+      };
+
+      await store.importAll(exported, reupload: false);
+
+      final rows = await rows_();
+      expect(rows.single['id'], 'a');
+      expect(rows.single['title'], 'restored');
+    });
+
+    test(
+      'import with reupload true queues the row for the next sync',
+      () async {
+        await store.importAll({
+          'todos': [
+            {'id': 'a', 'title': 'restored'},
+          ],
+        }, reupload: true);
+
+        final ops = await store.pendingOps();
+        expect(ops.single.op, 'put');
+        expect(ops.single.documentId, 'a');
+        // _updated_at and id must never be re-sent — the server owns one and
+        // assigns the other.
+        expect(ops.single.data, isNot(contains(updatedAtColumn)));
+        expect(ops.single.data, isNot(contains('id')));
+      },
+    );
+
+    test(
+      'import with reupload false restores silently, no outbox entry',
+      () async {
+        await store.importAll({
+          'todos': [
+            {'id': 'a', 'title': 'restored'},
+          ],
+        }, reupload: false);
+
+        expect(await store.pendingCount(), 0);
+      },
+    );
+
+    test(
+      'a collection name the current schema no longer declares is skipped',
+      () async {
+        await store.importAll({
+          'ghost_collection': [
+            {'id': 'a', 'note': 'from an older app version'},
+          ],
+        }, reupload: false);
+
+        expect(await rows_(), isEmpty);
+      },
+    );
+
+    test('round-trips through export and import unchanged', () async {
+      await store.insert('todos', 'a', {
+        'title': 'roundtrip',
+        'done': 1,
+      }, transactionId: 'tx-1');
+
+      final exported = await store.exportAll();
+      await store.clear();
+      await store.importAll(exported, reupload: false);
+
+      final rows = await rows_();
+      expect(rows.single['title'], 'roundtrip');
+      expect(rows.single['done'], 1);
+    });
+  });
 }

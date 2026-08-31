@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:sqlite_async/sqlite_async.dart';
+import 'package:uuid/uuid.dart';
 
 import '../schema/schema.dart';
 
@@ -67,6 +68,7 @@ class LocalStore {
 
   final SqliteConnection db;
   final OnebaseSchema schema;
+  final Uuid _uuid = const Uuid();
 
   /// Creates the tables for [schema] if they do not exist yet.
   ///
@@ -334,6 +336,61 @@ CREATE TABLE IF NOT EXISTS $metaTable (
             await tx.execute('DELETE FROM "$collection" WHERE id = ?', [
               op.documentId,
             ]);
+        }
+      }
+    });
+  }
+
+  // -------------------------------------------------------------- backup
+
+  /// Every locally held row, keyed by collection name.
+  ///
+  /// This is the escape hatch for offline-first: the device is the source of
+  /// truth, so if the backend ever disappears for good, this snapshot is
+  /// what is left to hand back to the user. It includes edits still waiting
+  /// in the outbox — they are already applied to these tables optimistically
+  /// — and every value is a plain String/int/double/null, so the result is
+  /// `jsonEncode`-able as-is. Nothing here talks to the network.
+  Future<Map<String, List<Map<String, Object?>>>> exportAll() async {
+    final result = <String, List<Map<String, Object?>>>{};
+    for (final collection in schema.collections.values) {
+      if (collection.sync.isRemoteOnly) continue;
+      final rows = await db.getAll('SELECT * FROM "${collection.name}"');
+      result[collection.name] = [
+        for (final row in rows) Map<String, Object?>.of(row),
+      ];
+    }
+    return result;
+  }
+
+  /// Restores rows produced by [exportAll], e.g. after a reinstall or when
+  /// pointing an existing user at a new backend.
+  ///
+  /// A collection name the current schema no longer declares is skipped
+  /// rather than thrown on, so an export taken from an older version of the
+  /// app still restores what it can. When [reupload] is true every row is
+  /// also queued in the outbox, so the next sync sends it to whichever
+  /// backend this client is now configured against; pass false to restore
+  /// silently against the backend the data already came from.
+  Future<void> importAll(
+    Map<String, List<Map<String, Object?>>> data, {
+    required bool reupload,
+  }) async {
+    await db.writeTransaction((tx) async {
+      for (final MapEntry(key: name, value: rows) in data.entries) {
+        final collection = schema.collections[name];
+        if (collection == null || collection.sync.isRemoteOnly) continue;
+        for (final row in rows) {
+          final id = row['id'];
+          if (id is! String) continue;
+          final encoded = <String, Object?>{
+            for (final MapEntry(:key, :value) in row.entries)
+              if (key != 'id' && key != updatedAtColumn) key: value,
+          };
+          await _applyPut(tx, name, id, encoded);
+          if (reupload) {
+            await _enqueue(tx, _uuid.v4(), 'put', name, id, encoded);
+          }
         }
       }
     });
