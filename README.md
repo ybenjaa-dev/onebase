@@ -80,7 +80,7 @@ flowchart LR
 
 ```yaml
 dependencies:
-  onebase: ^0.3.4    # requires Flutter 3.38+ / Dart 3.10+
+  onebase: ^0.3.5    # requires Flutter 3.38+ / Dart 3.10+
 ```
 
 **2. Describe your data** — `dart run onebase:setup --init` creates
@@ -416,8 +416,13 @@ the command that fixes it.
 
 ## Limitations
 
-- **Conflicts are last-write-wins** by server timestamp. There is no custom
-  merge hook yet.
+- **Conflicts are last-write-wins per field.** `update()` uploads only the
+  fields it changed, so concurrent edits to different fields of one document
+  merge rather than clobber each other. Edits to the same field resolve by
+  server commit order — the order transactions land, not the order users
+  acted, so a device on a slow connection can win over a later edit.
+  `insert()` replaces every declared field. There is no custom merge hook
+  yet.
 - **The rate limiter is per-instance**, held in memory. Behind several
   instances the effective budget multiplies by instance count.
 - **Realtime needs a long-lived connection.** Container hosts hold it fine;
